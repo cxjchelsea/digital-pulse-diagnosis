@@ -23,6 +23,40 @@ flowchart LR
 
 建设顺序不能颠倒：采集数据不可靠时不训练脉象模型；信号质量不通过时，分析软件必须拒绝生成结果并提示重采。
 
+## P0实施基线
+
+当前Draft PR提供第一批可执行内容：
+
+- [系统需求规格说明书](docs/实施设计/系统需求规格说明书.md)
+- [接口与通信协议](docs/实施设计/接口与通信协议.md)
+- [数据与文件规范](docs/实施设计/数据与文件规范.md)
+- [设备状态机与安全设计](docs/实施设计/设备状态机与安全设计.md)
+- [脉搏信号模拟器设计](docs/实施设计/脉搏信号模拟器设计.md)
+- [信号处理详细设计](docs/实施设计/信号处理详细设计.md)
+- [分析软件详细设计](docs/实施设计/分析软件详细设计.md)
+- [P0测试与验收计划](docs/实施设计/P0测试与验收计划.md)
+
+已实现：
+
+- 小端二进制协议v0与CRC32；
+- 确定性合成脉搏波；
+- 多载荷平台设备模拟器；
+- 基线处理、峰检测、心率和基础质量判断；
+- 标准库`unittest`自动化测试。
+
+本地运行：
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -e .
+python -m unittest discover -s tests -v
+pulse-simulator --output simulated-session.bin --forces 40 80 120
+```
+
+这些载荷值和合成波形仅用于验证软件流程，不是人体安全压力或医学模型。
+
 ## 首个可交付目标
 
 完成单点“关部”桌面式原型：
