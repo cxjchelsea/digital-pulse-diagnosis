@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: digital-pulse-diagnosis
+Version: 0.1.0
+Summary: P0 protocol, simulator, and signal-processing baseline for digital pulse acquisition
+Requires-Python: >=3.10
+Requires-Dist: numpy>=1.24
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn>=0.30
+Requires-Dist: pydantic>=2.9
