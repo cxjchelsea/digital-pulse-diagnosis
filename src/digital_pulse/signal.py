@@ -46,7 +46,10 @@ def detect_peaks(
     if len(signal) < 3:
         return np.array([], dtype=int)
     candidates = np.where((signal[1:-1] > signal[:-2]) & (signal[1:-1] >= signal[2:]))[0] + 1
-    threshold = np.median(signal) + 0.35 * np.std(signal)
+    # P0 template contains a smaller reflected/dicrotic component. A high
+    # threshold keeps the baseline detector on the dominant systolic peak
+    # instead of double-counting morphology within the same cardiac cycle.
+    threshold = np.median(signal) + 0.9 * np.std(signal)
     candidates = candidates[signal[candidates] > threshold]
     min_distance = max(1, int(sample_rate_hz * 60.0 / max_heart_rate_bpm))
 
@@ -110,4 +113,3 @@ def assess_quality(
     score = max(0.0, 1.0 - 0.22 * len(reasons))
     label = "good" if not reasons else "review" if score >= 0.5 else "invalid"
     return QualityResult(label, score, tuple(reasons))
-
