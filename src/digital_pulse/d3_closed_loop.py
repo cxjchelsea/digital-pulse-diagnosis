@@ -16,6 +16,7 @@ from digital_pulse.d3_contracts import (
     PlantConfig,
     SafetyConfig,
     TimingConfig,
+    config_bundle_report,
 )
 from digital_pulse.d3_controller import D3PIDController
 from digital_pulse.d3_plant import D3Plant, PlantObservation
@@ -460,6 +461,12 @@ class ClosedLoopRunner:
         if unknown:
             raise ValueError(f"unknown closed-loop cases: {unknown}")
         results = [self.run_case(cases[item]) for item in selected]
+        bundle = config_bundle_report(
+            plant=self.plant_config,
+            controller=self.controller_config,
+            safety=self.safety_config,
+            timing=self.timing,
+        )
         report = {
             "schema_version": "1.0.0",
             "experiment_type": "d3_closed_loop_unload",
@@ -472,6 +479,8 @@ class ClosedLoopRunner:
                 "failed_count": sum(1 for item in results if not item.passed),
                 "all_passed": all(item.passed for item in results),
             },
+            "configs": bundle["configs"],
+            "config_hashes": bundle["config_hashes"],
             "disclaimer": "Synthetic relative-unit closed-loop evidence; not hardware or human safety validation.",
         }
         report["report_sha256"] = hashlib.sha256(

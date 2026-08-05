@@ -115,6 +115,15 @@ def test_d3_runtime_abort_enters_retract_and_unloads(tmp_path):
     report = final["report"]
     assert report is not None
     assert report["positive_command_after_abort"] is False
+    assert report["max_command_after_abort"] is not None
+    assert report["max_command_after_abort"] <= 0.0
+    assert report["positive_command_ticks_after_abort"] == []
+    assert report["abort_processed_tick"] is not None
+    assert report["abort_request_tick"] is not None
+    assert report["retract_tick"] is not None
+    assert report["idle_tick"] is not None
+    assert report["unload_duration_s"] is not None
+    assert report["config_hashes"]["combined_sha256"]
 
 
 def test_d3_runtime_abort_idempotent(tmp_path):
@@ -179,3 +188,48 @@ def test_d3_runtime_finished_session_remains_queryable(tmp_path):
     assert again.json()["report"] is not None
     assert again.json()["report"]["report_sha256"]
     assert final["unload_complete"] is True
+
+
+def test_d3_runtime_records_positive_command_after_abort(monkeypatch, tmp_path):
+    from digital_pulse.d3_contracts import D3State
+    from digital_pulse.d3_runtime import D3RuntimeRegistry
+    from digital_pulse.d3_state_machine import D3DeviceStateMachine, StateMachineOutput
+
+    registry = D3RuntimeRegistry()
+    session = registry.create(targets=(40.0,), seed=1, hold=True, max_duration_s=40)
+    session.wait_until(lambda s: s["state"] == "ACQUIRE", timeout_s=10.0)
+
+    real_step = D3DeviceStateMachine.step
+    calls = {"n": 0}
+
+    def patched(self, inputs=None, *, requested_command=0.0, command=None):
+        out = real_step(self, inputs, requested_command=requested_command, command=command)
+        if session._abort_processed_tick is not None:
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return StateMachineOutput(
+                    tick=out.tick,
+                    device_time_us=out.device_time_us,
+                    previous_state=out.previous_state,
+                    state=D3State.RETRACT,
+                    command=0.25,
+                    safety_event=None,
+                    detected_faults=(),
+                )
+        return out
+
+    monkeypatch.setattr(D3DeviceStateMachine, "step", patched)
+    session.request_abort()
+    final = session.wait_until(
+        lambda s: s["status"] in {"ABORTED_IDLE", "FAILED", "FAULT_LATCHED"} or s["state"] == "IDLE",
+        timeout_s=10.0,
+    )
+    session.join(timeout_s=5.0)
+    report = final["report"]
+    assert report is not None
+    assert report["positive_command_after_abort"] is True
+    assert report["max_command_after_abort"] > 0.0
+    assert report["positive_command_ticks_after_abort"]
+    # Repeat abort must not clear violation evidence.
+    again = session.request_abort()
+    assert again["report"]["positive_command_after_abort"] is True

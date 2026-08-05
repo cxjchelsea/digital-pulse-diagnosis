@@ -8,7 +8,14 @@ import json
 import math
 
 from digital_pulse.d3_contracts import (
-    ControllerConfig, D3Command, D3State, PlantConfig, SafetyConfig, TimingConfig,
+    ControllerConfig,
+    D3Command,
+    D3State,
+    PlantConfig,
+    ProfileAcceptanceConfig,
+    SafetyConfig,
+    TimingConfig,
+    config_bundle_report,
 )
 from digital_pulse.d3_controller import D3PIDController
 from digital_pulse.d3_plant import D3Plant, PlantObservation
@@ -31,13 +38,19 @@ def run_normal_profile(
     seed: int = 20260805,
     acquire_s: float = 0.5,
     max_duration_s: float = 30.0,
+    acceptance: ProfileAcceptanceConfig | None = None,
 ) -> dict:
     if not targets or any(not math.isfinite(x) or x <= 0 for x in targets):
         raise ValueError("targets must be finite and positive")
+    acceptance = acceptance or ProfileAcceptanceConfig()
+    acceptance.validate()
     timing = TimingConfig()
-    plant = D3Plant(PlantConfig(plant_id="d3-g-plant"), timing, seed=seed)
-    controller = D3PIDController(ControllerConfig(controller_id="d3-g-controller"), timing)
-    machine = D3DeviceStateMachine(SafetyConfig(safety_id="d3-g-safety"), timing)
+    plant_config = PlantConfig(plant_id="d3-g-plant")
+    controller_config = ControllerConfig(controller_id="d3-g-controller")
+    safety_config = SafetyConfig(safety_id="d3-g-safety")
+    plant = D3Plant(plant_config, timing, seed=seed)
+    controller = D3PIDController(controller_config, timing)
+    machine = D3DeviceStateMachine(safety_config, timing)
     machine.step()
     machine.step(StateInputs(self_test_passed=True))
     machine.step(command=D3Command.START)
@@ -102,7 +115,11 @@ def run_normal_profile(
             stable_time = ((stable_tick or machine.tick) - (step_start_tick or machine.tick)) * controller.dt_s
             metrics.append(StepMetric(
                 targets[target_index], stable_time, error, overshoot,
-                stable_time <= 3.0 and error <= 2.0 and overshoot <= 10.0,
+                (
+                    stable_time <= acceptance.max_stable_time_s
+                    and error <= acceptance.max_steady_error_au
+                    and overshoot <= acceptance.max_overshoot_percent
+                ),
             ))
             if target_index < len(targets) - 1:
                 target_index += 1
@@ -118,6 +135,13 @@ def run_normal_profile(
         if machine.state is D3State.IDLE and len(metrics) == len(targets):
             break
 
+    bundle = config_bundle_report(
+        plant=plant_config,
+        controller=controller_config,
+        safety=safety_config,
+        timing=timing,
+        profile_acceptance=acceptance,
+    )
     report = {
         "schema_version": "1.0.0",
         "targets_au": list(targets),
@@ -129,6 +153,9 @@ def run_normal_profile(
         "timeline": timeline,
         "max_force_au": max((item.target_force_au * (1 + item.overshoot_percent / 100) for item in metrics), default=0.0),
         "all_metrics_passed": len(metrics) == len(targets) and all(item.passed for item in metrics),
+        "profile_acceptance": bundle["configs"]["profile_acceptance"],
+        "configs": bundle["configs"],
+        "config_hashes": bundle["config_hashes"],
         "limitations": "Synthetic relative-unit integration evidence; not hardware or human safety validation.",
     }
     report["sha256"] = hashlib.sha256(
@@ -189,9 +216,12 @@ def run_full_chain_long_hold(
     if duration_s <= 0:
         raise ValueError("duration_s must be positive")
     timing = TimingConfig()
-    plant = D3Plant(PlantConfig(plant_id="d3-full-long-plant"), timing, seed=seed)
-    controller = D3PIDController(ControllerConfig(controller_id="d3-full-long-ctrl"), timing)
-    machine = D3DeviceStateMachine(SafetyConfig(safety_id="d3-full-long-safety"), timing)
+    plant_config = PlantConfig(plant_id="d3-full-long-plant")
+    controller_config = ControllerConfig(controller_id="d3-full-long-ctrl")
+    safety_config = SafetyConfig(safety_id="d3-full-long-safety")
+    plant = D3Plant(plant_config, timing, seed=seed)
+    controller = D3PIDController(controller_config, timing)
+    machine = D3DeviceStateMachine(safety_config, timing)
     machine.step()
     machine.step(StateInputs(self_test_passed=True))
     machine.step(command=D3Command.START)
@@ -285,6 +315,12 @@ def run_full_chain_long_hold(
             break
 
     hold_duration_s = ticks * timing.control_period_us / 1_000_000
+    bundle = config_bundle_report(
+        plant=plant_config,
+        controller=controller_config,
+        safety=safety_config,
+        timing=timing,
+    )
     report = {
         "schema_version": "1.0.0",
         "experiment_type": "d3_full_chain_long_hold",
@@ -310,6 +346,8 @@ def run_full_chain_long_hold(
         "timeline": timeline[-64:],
         "timeline_bounded": len(timeline) <= 256,
         "modules": ["plant", "pid", "safety", "device_state_machine", "heartbeat"],
+        "configs": bundle["configs"],
+        "config_hashes": bundle["config_hashes"],
         "disclaimer": (
             "Synthetic relative-unit full-chain model-time evidence; "
             "not hardware or human safety validation."

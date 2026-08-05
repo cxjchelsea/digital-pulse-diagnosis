@@ -19,6 +19,7 @@ from digital_pulse.d3_contracts import (
     PlantConfig,
     SafetyConfig,
     TimingConfig,
+    config_bundle_report,
 )
 from digital_pulse.d3_controller import D3PIDController
 from digital_pulse.d3_plant import D3Plant, PlantObservation
@@ -29,6 +30,8 @@ from digital_pulse.d3_state_machine import ACTIVE_STATES, D3DeviceStateMachine, 
 RUN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 MAX_SESSIONS = 32
 TERMINAL_STATES = frozenset({"COMPLETED", "FAILED", "FAULT_LATCHED", "ABORTED_IDLE"})
+COMMAND_TOLERANCE = 1e-12
+MAX_POSITIVE_TICKS_RECORDED = 64
 
 
 @dataclass
@@ -79,13 +82,12 @@ class D3RuntimeSession:
         self.max_duration_s = max_duration_s
         self.hold = hold
         self.timing = TimingConfig()
-        self.plant = D3Plant(PlantConfig(plant_id="d3-runtime-plant"), self.timing, seed=seed)
-        self.controller = D3PIDController(
-            ControllerConfig(controller_id="d3-runtime-ctrl"), self.timing
-        )
-        self.machine = D3DeviceStateMachine(
-            SafetyConfig(safety_id="d3-runtime-safety"), self.timing
-        )
+        self.plant_config = PlantConfig(plant_id="d3-runtime-plant")
+        self.controller_config = ControllerConfig(controller_id="d3-runtime-ctrl")
+        self.safety_config = SafetyConfig(safety_id="d3-runtime-safety")
+        self.plant = D3Plant(self.plant_config, self.timing, seed=seed)
+        self.controller = D3PIDController(self.controller_config, self.timing)
+        self.machine = D3DeviceStateMachine(self.safety_config, self.timing)
         self._lock = threading.RLock()
         self._abort_requested = False
         self._abort_count = 0
@@ -105,8 +107,12 @@ class D3RuntimeSession:
         self._command = 0.0
         self._last_output_command = 0.0
         self._positive_after_abort = False
-        self._abort_tick: int | None = None
+        self._abort_request_tick: int | None = None
+        self._abort_processed_tick: int | None = None
         self._retract_tick: int | None = None
+        self._idle_tick: int | None = None
+        self._max_command_after_abort: float | None = None
+        self._positive_command_ticks_after_abort: list[int] = []
 
     def start(self) -> None:
         with self._lock:
@@ -129,6 +135,7 @@ class D3RuntimeSession:
                 raise ConflictError(f"abort not allowed in state {self.machine.state.value}")
             self._abort_requested = True
             self._abort_count += 1
+            self._abort_request_tick = self.machine.tick
             self.status = "ABORTING"
             self._hold_wake.set()
             return self.snapshot()
@@ -279,18 +286,27 @@ class D3RuntimeSession:
                         inputs, requested_command=requested, command=abort_cmd
                     )
                     self._last_output_command = output.command
-                    if abort_cmd is D3Command.ABORT and self._abort_tick is None:
-                        self._abort_tick = output.tick
+                    if abort_cmd is D3Command.ABORT and self._abort_processed_tick is None:
+                        self._abort_processed_tick = output.tick
                         self.events.append({
                             "tick": output.tick,
                             "type": "ABORT",
                             "state": output.state.value,
                             "command": output.command,
                         })
-                        if output.command > 0:
+                    if self._abort_processed_tick is not None:
+                        current = float(output.command)
+                        self._max_command_after_abort = (
+                            current
+                            if self._max_command_after_abort is None
+                            else max(self._max_command_after_abort, current)
+                        )
+                        if current > COMMAND_TOLERANCE:
                             self._positive_after_abort = True
+                            if len(self._positive_command_ticks_after_abort) < MAX_POSITIVE_TICKS_RECORDED:
+                                self._positive_command_ticks_after_abort.append(output.tick)
                     if (
-                        self._abort_tick is not None
+                        self._abort_processed_tick is not None
                         and output.state is D3State.RETRACT
                         and self._retract_tick is None
                     ):
@@ -339,8 +355,9 @@ class D3RuntimeSession:
                         return
 
                     if self.machine.state is D3State.IDLE:
-                        if self._abort_requested or self._abort_tick is not None:
-                            self.unload_complete = True
+                        self._idle_tick = self.machine.tick
+                        if self._abort_requested or self._abort_processed_tick is not None:
+                            self.unload_complete = not self._positive_after_abort
                             self.status = "ABORTED_IDLE"
                         else:
                             self.unload_complete = True
@@ -361,6 +378,19 @@ class D3RuntimeSession:
                 self.final_state = self.machine.state.value
 
     def _finalize_report(self, *, completed: bool) -> None:
+        unload_duration_s = None
+        if self._abort_processed_tick is not None and self._idle_tick is not None:
+            unload_duration_s = (
+                (self._idle_tick - self._abort_processed_tick)
+                * self.timing.control_period_us
+                / 1_000_000
+            )
+        bundle = config_bundle_report(
+            plant=self.plant_config,
+            controller=self.controller_config,
+            safety=self.safety_config,
+            timing=self.timing,
+        )
         body = {
             "schema_version": "1.0.0",
             "experiment_type": "d3_runtime_session",
@@ -369,14 +399,22 @@ class D3RuntimeSession:
             "targets_au": list(self.targets),
             "status": self.status,
             "final_state": self.final_state,
-            "completed": completed,
+            "completed": completed and not self._positive_after_abort,
             "unload_complete": self.unload_complete,
             "abort_count": self._abort_count,
-            "abort_tick": self._abort_tick,
+            "abort_request_tick": self._abort_request_tick,
+            "abort_processed_tick": self._abort_processed_tick,
+            "abort_tick": self._abort_processed_tick,
             "retract_tick": self._retract_tick,
+            "idle_tick": self._idle_tick,
+            "unload_duration_s": unload_duration_s,
+            "max_command_after_abort": self._max_command_after_abort,
+            "positive_command_ticks_after_abort": list(self._positive_command_ticks_after_abort),
             "positive_command_after_abort": self._positive_after_abort,
             "timeline": list(self.timeline),
             "events": list(self.events),
+            "configs": bundle["configs"],
+            "config_hashes": bundle["config_hashes"],
             "disclaimer": (
                 "Synthetic relative-unit runtime evidence; not hardware or human safety validation."
             ),
