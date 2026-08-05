@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": "normal-profile",
+  "target_forces_au": [
+    40,
+    80,
+    120
+  ],
+  "seed": 20260805,
+  "faults": []
+}
