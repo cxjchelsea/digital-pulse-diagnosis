@@ -106,6 +106,7 @@ def create_app(data_root: Path | None = None) -> FastAPI:
         experiment_path = root / "d2-experiments" / report["report_sha256"]
         experiment_path.mkdir(parents=True, exist_ok=True)
         (experiment_path / "calibration.json").write_text(json.dumps(calibration.canonical() | {"checksum": calibration.checksum}, ensure_ascii=False, indent=2), encoding="utf-8")
+        (experiment_path / "request.json").write_text(request.model_dump_json(indent=2), encoding="utf-8")
         (experiment_path / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
 
@@ -117,6 +118,25 @@ def create_app(data_root: Path | None = None) -> FastAPI:
         if not path.exists():
             raise HTTPException(404, "D2 report not found")
         return json.loads(path.read_text(encoding="utf-8"))
+
+    @app.post("/api/experiments/d2/{report_sha256}/replay")
+    def d2_replay(report_sha256: str):
+        experiment_path = root / "d2-experiments" / report_sha256
+        if not experiment_path.exists():
+            raise HTTPException(404, "D2 experiment not found")
+        request = D2ExperimentRequest.model_validate_json((experiment_path / "request.json").read_text(encoding="utf-8"))
+        raw_calibration = json.loads((experiment_path / "calibration.json").read_text(encoding="utf-8"))
+        raw_calibration["model_type"] = CalibrationModel(raw_calibration["model_type"])
+        raw_calibration["raw_points"] = tuple(raw_calibration["raw_points"])
+        raw_calibration["engineering_points"] = tuple(raw_calibration["engineering_points"])
+        calibration = CalibrationRecord(**raw_calibration)
+        profile = PressureProfile(profile_id=f"d2-{request.seed}", seed=request.seed,
+                                  steps=tuple(D2PressureStep(force, acquire_s=4.0) for force in request.target_forces_au))
+        faults = D2FaultConfig(never_stable_step=request.never_stable_step, clipping_raw=request.clipping_raw,
+                               motion_start_s=request.motion_start_s,
+                               motion_duration_s=1.0 if request.motion_start_s is not None else 0.0)
+        replayed = run_d2_experiment(profile, calibration, request.sample_rate_hz, request.heart_rate_bpm, faults)
+        return {"identical": replayed["report_sha256"] == report_sha256, "report": replayed}
 
     @app.get("/api/sessions")
     def sessions():
