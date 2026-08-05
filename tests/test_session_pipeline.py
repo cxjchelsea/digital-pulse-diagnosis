@@ -10,6 +10,29 @@ from digital_pulse.session import SessionWriter, capture_frames, replay_frames
 
 
 class SessionPipelineTests(unittest.TestCase):
+    def test_fragmented_bytes_are_persisted_before_parsing(self):
+        from digital_pulse.protocol import DataSample, DeviceState, StatusFlag, encode_data_frame
+        sample = DataSample(0, 1000, 0, 1, 2, 3, 4, 5, DeviceState.ACQUIRE, StatusFlag.NONE)
+        frame = encode_data_frame(sample)
+        with TemporaryDirectory() as directory:
+            writer = SessionWriter(Path(directory), {"source_type": "virtual_serial"})
+            self.assertEqual(writer.append_bytes(frame[:7]), [])
+            parsed = writer.append_bytes(frame[7:])
+            self.assertEqual(parsed, [sample])
+            manifest = writer.close()
+            self.assertTrue(manifest["completed"])
+            self.assertEqual(writer.raw_path.read_bytes(), frame)
+
+    def test_incomplete_transport_tail_marks_session_incomplete(self):
+        sample = DataSample(0, 1000, 0, 1, 2, 3, 4, 5, DeviceState.ACQUIRE)
+        frame = encode_data_frame(sample)
+        with TemporaryDirectory() as directory:
+            writer = SessionWriter(Path(directory), {"source_type": "virtual_serial"})
+            writer.append_bytes(frame[:-4])
+            manifest = writer.close()
+            self.assertFalse(manifest["completed"])
+            self.assertIn("incomplete_tail", writer.events_path.read_text(encoding="utf-8"))
+
     def test_capture_replay_and_quality_gated_report(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

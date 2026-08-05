@@ -33,6 +33,7 @@ class SessionWriter:
         self.configuration = configuration
         self.stats = SessionStats()
         self._last_timestamp: int | None = None
+        self._stream_tail = b""
         self._raw = self.raw_path.open("wb")
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._closed = False
@@ -41,6 +42,17 @@ class SessionWriter:
         if self._closed:
             raise RuntimeError("session is closed")
         self._raw.write(frame)
+        return self._inspect_frame(frame)
+
+    def append_bytes(self, chunk: bytes) -> list[DataSample]:
+        """Persist an incoming transport chunk before parsing complete frames."""
+        if self._closed:
+            raise RuntimeError("session is closed")
+        self._raw.write(chunk)
+        frames, self._stream_tail = split_frames(self._stream_tail + chunk)
+        return [sample for frame in frames if (sample := self._inspect_frame(frame)) is not None]
+
+    def _inspect_frame(self, frame: bytes) -> DataSample | None:
         try:
             decoded = decode_frame(frame)
         except ProtocolError as exc:
@@ -71,6 +83,9 @@ class SessionWriter:
     def close(self, completed: bool = True) -> dict:
         if self._closed:
             return json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        if self._stream_tail:
+            completed = False
+            self.event("incomplete_tail", {"byte_count": len(self._stream_tail)})
         self._raw.flush()
         self._raw.close()
         self._closed = True
@@ -109,4 +124,3 @@ def capture_frames(root: Path, frames: Iterable[bytes], configuration: dict) -> 
         for frame in frames:
             writer.append(frame)
     return writer.path, json.loads(writer.manifest_path.read_text(encoding="utf-8"))
-
