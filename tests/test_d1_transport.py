@@ -49,6 +49,39 @@ class D1TransportTests(unittest.TestCase):
             client.send(CommandCode.HELLO)
         self.assertFalse(device.connected)
 
+    def test_port_disappearance_and_reconnect(self):
+        host, device = VirtualSerialTransport.pair()
+        client, firmware = DeviceClient(host), FirmwareSimulator(device)
+        first_request = client.send(CommandCode.HELLO)
+        firmware.poll()
+        self.assertEqual(decode_response(client.receive_frames()[0]).request_id, first_request)
+        device.close()
+        with self.assertRaisesRegex(TransportError, "disconnected"):
+            client.send(CommandCode.CAPABILITIES)
+        replacement_host, replacement_device = VirtualSerialTransport.pair()
+        replacement_firmware = FirmwareSimulator(replacement_device)
+        client.reconnect(replacement_host)
+        next_request = client.send(CommandCode.HELLO)
+        replacement_firmware.poll()
+        response = decode_response(client.receive_frames()[0])
+        self.assertGreater(next_request, first_request)
+        self.assertEqual(response.request_id, next_request)
+        self.assertEqual(response.status, ResponseStatus.ACK)
+
+    def test_sixty_second_stream_has_no_frame_loss(self):
+        host, device = VirtualSerialTransport.pair(b_faults=LinkFaults(max_chunk_size=17))
+        client, firmware = DeviceClient(host), FirmwareSimulator(device)
+        client.send(CommandCode.START)
+        firmware.poll()
+        client.receive_frames()
+        expected = 60 * 250
+        sent = firmware.emit_profile((PressureStep(80, 0, 60),), SimulationConfig(sample_rate_hz=250))
+        frames = client.receive_frames()
+        self.assertEqual(sent, expected)
+        self.assertEqual(len(frames), expected)
+        sequences = [decode_frame(frame).sample.frame_sequence for frame in frames]
+        self.assertEqual(sequences, list(range(expected)))
+
 
 if __name__ == "__main__":
     unittest.main()
