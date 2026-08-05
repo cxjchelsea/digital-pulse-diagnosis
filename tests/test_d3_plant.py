@@ -86,6 +86,17 @@ class D3PlantTests(unittest.TestCase):
         self.assertEqual((item.position_au or 0) % 0.5, 0)
         self.assertLessEqual(abs(item.force_au or 0), 0.01)
 
+    def test_reset_restores_state_and_random_sequence(self):
+        model = D3Plant(
+            PlantConfig("reset"),
+            observation=ObservationConfig(position_noise_std_au=0.1),
+            seed=9,
+        )
+        first = model.step(0.5)
+        model.run([0.5] * 10)
+        model.reset()
+        self.assertEqual(model.step(0.5), first)
+
     def test_invalid_observation_and_command_are_rejected(self):
         with self.assertRaises(D3ContractError):
             ObservationConfig(force_delay_steps=-1).validate()
