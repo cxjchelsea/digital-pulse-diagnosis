@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d2-calibration.schema.json",
+  "title": "D2 Calibration Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "calibration_id", "channel", "model_type", "raw_points", "engineering_points", "unit", "created_at_utc", "valid_from_utc", "source", "checksum"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "calibration_id": {"type": "string", "minLength": 1},
+    "channel": {"enum": ["pulse", "force", "reference"]},
+    "model_type": {"enum": ["offset", "affine", "piecewise_linear"]},
+    "raw_points": {"type": "array", "items": {"type": "number"}, "minItems": 1},
+    "engineering_points": {"type": "array", "items": {"type": "number"}, "minItems": 1},
+    "unit": {"enum": ["pulse_au", "force_au", "reference_au"]},
+    "created_at_utc": {"type": "string", "format": "date-time"},
+    "valid_from_utc": {"type": "string", "format": "date-time"},
+    "valid_until_utc": {"type": ["string", "null"], "format": "date-time"},
+    "source": {"enum": ["synthetic", "bench", "device"]},
+    "generator_version": {"type": ["string", "null"]},
+    "checksum": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

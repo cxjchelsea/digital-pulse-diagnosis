@@ -7,6 +7,21 @@ from digital_pulse.api import create_app
 
 
 class ApiTests(unittest.TestCase):
+    def test_d2_experiment_report_and_calibration_gate(self):
+        with TemporaryDirectory() as directory:
+            client = TestClient(create_app(Path(directory)))
+            good = client.post("/api/experiments/d2/run", json={"target_forces_au": [40, 80, 120], "sample_rate_hz": 100, "seed": 9})
+            self.assertEqual(good.status_code, 200)
+            body = good.json()
+            self.assertTrue(body["analysis_allowed"])
+            self.assertTrue(body["disclaimer"].startswith("Synthetic D2"))
+            replay = client.get(f"/api/experiments/d2/{body['report_sha256']}")
+            self.assertEqual(replay.json(), body)
+            rebuilt = client.post(f"/api/experiments/d2/{body['report_sha256']}/replay")
+            self.assertTrue(rebuilt.json()["identical"])
+            blocked = client.post("/api/experiments/d2/run", json={"sample_rate_hz": 100, "expired_calibration": True})
+            self.assertFalse(blocked.json()["analysis_allowed"])
+
     def test_d1_device_demo_handshake_and_state(self):
         with TemporaryDirectory() as directory:
             client = TestClient(create_app(Path(directory)))
