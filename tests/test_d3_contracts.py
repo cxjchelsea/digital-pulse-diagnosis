@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import unittest
 
 from digital_pulse.d3_contracts import (
@@ -26,6 +28,22 @@ class D3ContractTests(unittest.TestCase):
         ControllerConfig("pid-default").validate()
         SafetyConfig("safety-default").validate()
         ScenarioConfig("normal", (40.0, 80.0, 120.0), seed=7).validate()
+
+    def test_repository_examples_match_runtime_contracts(self):
+        root = Path(__file__).resolve().parents[1] / "examples" / "d3"
+        plant = PlantConfig(**json.loads((root / "plant-default.json").read_text(encoding="utf-8")))
+        controller = ControllerConfig(**json.loads((root / "controller-default.json").read_text(encoding="utf-8")))
+        safety = SafetyConfig(**json.loads((root / "safety-default.json").read_text(encoding="utf-8")))
+        raw = json.loads((root / "scenario-normal.json").read_text(encoding="utf-8"))
+        scenario = ScenarioConfig(
+            scenario_id=raw["scenario_id"],
+            target_forces_au=tuple(raw["target_forces_au"]),
+            seed=raw["seed"],
+            faults=tuple(FaultInjection(FaultCode(item["code"]), item["at_s"], item["duration_s"]) for item in raw["faults"]),
+            schema_version=raw["schema_version"],
+        )
+        for contract in (plant, controller, safety, scenario):
+            contract.validate()
 
     def test_timing_requires_integer_tick_multiples(self):
         with self.assertRaisesRegex(D3ContractError, "multiple"):
