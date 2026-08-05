@@ -41,6 +41,23 @@ class D2ExperimentTests(unittest.TestCase):
         self.assertFalse(report["analysis_allowed"])
         self.assertTrue(all("expired" in step["quality_reasons"] for step in report["steps"]))
 
+    def test_loading_and_unloading_directions_are_reported(self):
+        p = PressureProfile("round-trip", (D2PressureStep(80, .3, .2, 4), D2PressureStep(40, .3, .2, 4)), seed=3)
+        report = run_d2_experiment(p, calibration(), 100, faults=D2FaultConfig(hysteresis_au=1.5))
+        self.assertEqual([step["direction"] for step in report["steps"]], ["loading", "unloading"])
+
+    def test_all_unstable_steps_produce_no_candidate(self):
+        p = PressureProfile("blocked", (D2PressureStep(80, .3, .2, 4),), seed=3)
+        report = run_d2_experiment(p, calibration(), 100, faults=D2FaultConfig(never_stable_step=0))
+        self.assertFalse(report["analysis_allowed"])
+        self.assertIsNone(report["best_target_force_au"])
+
+    def test_sensor_disconnect_is_traceable(self):
+        p = PressureProfile("disconnect", (D2PressureStep(80, .3, .2, 4),), seed=3)
+        report = run_d2_experiment(p, calibration(), 100, faults=D2FaultConfig(sensor_disconnect_start_s=0, sensor_disconnect_duration_s=5))
+        self.assertFalse(report["analysis_allowed"])
+        self.assertIn("sensor_disconnect", report["steps"][0]["quality_reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()
