@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum, IntFlag
+import json
 import struct
 import zlib
 
@@ -16,6 +17,7 @@ PROTOCOL_VERSION = 0
 HEADER = struct.Struct("<HBBHIQ")
 DATA_PAYLOAD = struct.Struct("<IiiiiiHI")
 CRC = struct.Struct("<I")
+CONTROL_PREFIX = struct.Struct("<HI")
 
 
 class ProtocolError(ValueError):
@@ -27,6 +29,28 @@ class MessageType(IntEnum):
     EVENT = 2
     COMMAND = 3
     RESPONSE = 4
+
+
+class CommandCode(IntEnum):
+    HELLO = 1
+    CAPABILITIES = 2
+    START = 3
+    STOP = 4
+    ABORT = 5
+
+
+class ResponseStatus(IntEnum):
+    ACK = 0
+    NACK = 1
+
+
+class ErrorCode(IntEnum):
+    NONE = 0
+    INVALID_COMMAND = 1
+    INVALID_STATE = 2
+    INVALID_ARGUMENT = 3
+    UNSUPPORTED = 4
+    INTERNAL_ERROR = 5
 
 
 class DeviceState(IntEnum):
@@ -77,6 +101,28 @@ class DecodedFrame:
     payload: bytes
 
 
+@dataclass(frozen=True, slots=True)
+class CommandMessage:
+    command: CommandCode
+    request_id: int
+    arguments: dict
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseMessage:
+    command: CommandCode
+    request_id: int
+    status: ResponseStatus
+    error: ErrorCode
+    data: dict
+
+
+def encode_frame(message_type: MessageType, sequence: int, timestamp_us: int, payload: bytes) -> bytes:
+    header = HEADER.pack(MAGIC, PROTOCOL_VERSION, int(message_type), len(payload), sequence, timestamp_us)
+    body = header + payload
+    return body + CRC.pack(zlib.crc32(body) & 0xFFFFFFFF)
+
+
 def encode_data_frame(sample: DataSample) -> bytes:
     payload = DATA_PAYLOAD.pack(
         sample.sample_sequence,
@@ -88,16 +134,63 @@ def encode_data_frame(sample: DataSample) -> bytes:
         int(sample.device_state),
         int(sample.status_flags),
     )
-    header = HEADER.pack(
-        MAGIC,
-        PROTOCOL_VERSION,
-        int(MessageType.DATA),
-        len(payload),
-        sample.frame_sequence,
-        sample.device_time_us,
-    )
-    body = header + payload
-    return body + CRC.pack(zlib.crc32(body) & 0xFFFFFFFF)
+    return encode_frame(MessageType.DATA, sample.frame_sequence, sample.device_time_us, payload)
+
+
+def encode_command_frame(message: CommandMessage, sequence: int, timestamp_us: int = 0) -> bytes:
+    payload = CONTROL_PREFIX.pack(int(message.command), message.request_id) + json.dumps(
+        message.arguments, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return encode_frame(MessageType.COMMAND, sequence, timestamp_us, payload)
+
+
+def encode_response_frame(message: ResponseMessage, sequence: int, timestamp_us: int = 0) -> bytes:
+    body = {
+        "status": int(message.status),
+        "error": int(message.error),
+        "data": message.data,
+    }
+    payload = CONTROL_PREFIX.pack(int(message.command), message.request_id) + json.dumps(
+        body, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return encode_frame(MessageType.RESPONSE, sequence, timestamp_us, payload)
+
+
+def decode_command(frame: bytes) -> CommandMessage:
+    decoded = decode_frame(frame)
+    if decoded.message_type is not MessageType.COMMAND:
+        raise ProtocolError("not a command frame")
+    if len(decoded.payload) < CONTROL_PREFIX.size:
+        raise ProtocolError("command payload too short")
+    raw_command, request_id = CONTROL_PREFIX.unpack_from(decoded.payload)
+    try:
+        command = CommandCode(raw_command)
+        arguments = json.loads(decoded.payload[CONTROL_PREFIX.size:] or b"{}")
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ProtocolError("invalid command payload") from exc
+    if not isinstance(arguments, dict):
+        raise ProtocolError("command arguments must be an object")
+    return CommandMessage(command, request_id, arguments)
+
+
+def decode_response(frame: bytes) -> ResponseMessage:
+    decoded = decode_frame(frame)
+    if decoded.message_type is not MessageType.RESPONSE:
+        raise ProtocolError("not a response frame")
+    if len(decoded.payload) < CONTROL_PREFIX.size:
+        raise ProtocolError("response payload too short")
+    raw_command, request_id = CONTROL_PREFIX.unpack_from(decoded.payload)
+    try:
+        command = CommandCode(raw_command)
+        body = json.loads(decoded.payload[CONTROL_PREFIX.size:] or b"{}")
+        status = ResponseStatus(body["status"])
+        error = ErrorCode(body["error"])
+        data = body.get("data", {})
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ProtocolError("invalid response payload") from exc
+    if not isinstance(data, dict):
+        raise ProtocolError("response data must be an object")
+    return ResponseMessage(command, request_id, status, error, data)
 
 
 def decode_frame(frame: bytes) -> DecodedFrame:
@@ -169,4 +262,3 @@ def split_frames(stream: bytes) -> tuple[list[bytes], bytes]:
         frames.append(stream[offset : offset + size])
         offset += size
     return frames, stream[offset:]
-
