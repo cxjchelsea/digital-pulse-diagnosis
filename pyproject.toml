@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "digital-pulse-diagnosis"
+name = "adaptive-radial-pulse"
 version = "0.1.0"
-description = "P0 protocol, simulator, and signal-processing baseline for digital pulse acquisition"
+description = "Adaptive radial pulse acquisition, signal processing, control simulation, and objective analysis"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.9"]
 
