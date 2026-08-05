@@ -127,7 +127,7 @@ H1–H4逐步完成单点“关部”桌面式原型；其中H1先完成手动�
 
 当前状态是 D1 设备通信数字原型。完成D1–D3验收后，再执行：
 
-- [首批传感器选型实验方案](docs/02-采集硬件/首批传感器选型实验方案.md)；
+- [首批传感器选型实验方案](docs/02-采集硬件/H1首批传感器选型实验方案.md)；
 - [Issue #6：H1首批传感器与采购清单](https://github.com/cxjchelsea/digital-pulse-diagnosis/issues/6)；
 - [Issue #7：H1手动单点桡动脉采集原型](https://github.com/cxjchelsea/digital-pulse-diagnosis/issues/7)。
 
