@@ -6,7 +6,9 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# pip/setuptools 安装元数据（pip install -e . 会本地再生，勿提交）
 *.egg-info/
+*.eggs/
 .coverage
 htmlcov/
 

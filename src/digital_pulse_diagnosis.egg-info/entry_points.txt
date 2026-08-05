@@ -1,3 +1,0 @@
-[console_scripts]
-pulse-api = digital_pulse.api:main
-pulse-simulator = digital_pulse.cli:main
