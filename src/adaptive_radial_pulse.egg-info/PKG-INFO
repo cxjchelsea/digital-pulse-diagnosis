@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: adaptive-radial-pulse
+Version: 0.1.0
+Summary: Adaptive radial pulse acquisition, signal processing, control simulation, and objective analysis
+Requires-Python: >=3.10
+Requires-Dist: numpy>=1.24
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn>=0.30
+Requires-Dist: pydantic>=2.9
