@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d3-safety.schema.json",
+  "title": "D3 Safety Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "safety_id",
+    "soft_force_limit_au",
+    "hard_force_limit_au",
+    "max_compression_rate_au_s",
+    "stall_timeout_s",
+    "retract_timeout_s"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "safety_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "soft_force_limit_au": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "hard_force_limit_au": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "max_compression_rate_au_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "stall_timeout_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "retract_timeout_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

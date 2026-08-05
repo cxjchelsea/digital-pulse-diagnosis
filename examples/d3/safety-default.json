@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "safety_id": "safety-default",
+  "soft_force_limit_au": 140,
+  "hard_force_limit_au": 160,
+  "max_compression_rate_au_s": 30,
+  "stall_timeout_s": 0.5,
+  "retract_timeout_s": 5
+}

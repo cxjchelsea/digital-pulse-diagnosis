@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "plant_id": "plant-default",
+  "velocity_gain": 20,
+  "velocity_time_constant_s": 0.08,
+  "max_velocity_au_s": 12,
+  "max_acceleration_au_s2": 80,
+  "friction_deadband": 0.02,
+  "contact_position_au": 10,
+  "stiffness_linear": 4,
+  "stiffness_quadratic": 0.03,
+  "damping": 0.2,
+  "relaxation_time_s": 0.5,
+  "hysteresis_gain": 0.1,
+  "lower_position_au": 0,
+  "upper_position_au": 50
+}

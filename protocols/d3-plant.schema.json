@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d3-plant.schema.json",
+  "title": "D3 Plant Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plant_id",
+    "velocity_gain",
+    "velocity_time_constant_s",
+    "max_velocity_au_s",
+    "max_acceleration_au_s2",
+    "friction_deadband",
+    "contact_position_au",
+    "stiffness_linear",
+    "stiffness_quadratic",
+    "damping",
+    "relaxation_time_s",
+    "hysteresis_gain",
+    "lower_position_au",
+    "upper_position_au"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "plant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "velocity_gain": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "velocity_time_constant_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "max_velocity_au_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "max_acceleration_au_s2": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "friction_deadband": {
+      "type": "number",
+      "minimum": 0
+    },
+    "contact_position_au": {
+      "type": "number"
+    },
+    "stiffness_linear": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "stiffness_quadratic": {
+      "type": "number",
+      "minimum": 0
+    },
+    "damping": {
+      "type": "number",
+      "minimum": 0
+    },
+    "relaxation_time_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "hysteresis_gain": {
+      "type": "number",
+      "minimum": 0
+    },
+    "lower_position_au": {
+      "type": "number"
+    },
+    "upper_position_au": {
+      "type": "number"
+    }
+  }
+}

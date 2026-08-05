@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d3-safety-event.schema.json",
+  "title": "D3 Safety Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tick",
+    "device_time_us",
+    "code",
+    "priority",
+    "source",
+    "previous_state",
+    "action",
+    "target_state",
+    "latched",
+    "snapshot"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "tick": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "device_time_us": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "code": {
+      "enum": [
+        "emergency_stop",
+        "invalid_numeric",
+        "invariant_violation",
+        "hard_overload",
+        "limit_conflict",
+        "upper_limit",
+        "lower_limit",
+        "force_sensor_invalid",
+        "position_sensor_invalid",
+        "motor_stall",
+        "watchdog_timeout",
+        "host_timeout",
+        "state_timeout",
+        "never_stable",
+        "data_quality"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "previous_state": {
+      "enum": [
+        "BOOT",
+        "SELF_TEST",
+        "IDLE",
+        "APPROACH",
+        "CONTACT",
+        "STABILIZE",
+        "ACQUIRE",
+        "STEP",
+        "RETRACT",
+        "SAFE_HOLD",
+        "FAULT_LATCHED"
+      ]
+    },
+    "action": {
+      "enum": [
+        "zero_output",
+        "block_compression",
+        "controlled_retract",
+        "safe_hold",
+        "latch_fault",
+        "invalidate_window"
+      ]
+    },
+    "target_state": {
+      "enum": [
+        "BOOT",
+        "SELF_TEST",
+        "IDLE",
+        "APPROACH",
+        "CONTACT",
+        "STABILIZE",
+        "ACQUIRE",
+        "STEP",
+        "RETRACT",
+        "SAFE_HOLD",
+        "FAULT_LATCHED"
+      ]
+    },
+    "latched": {
+      "type": "boolean"
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    }
+  }
+}

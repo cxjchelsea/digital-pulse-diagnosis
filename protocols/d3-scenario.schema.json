@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d3-scenario.schema.json",
+  "title": "D3 Scenario Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "target_forces_au",
+    "seed",
+    "faults"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_forces_au": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "number",
+        "minimum": 0
+      }
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "faults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "at_s",
+          "duration_s"
+        ],
+        "properties": {
+          "code": {
+            "enum": [
+              "emergency_stop",
+              "invalid_numeric",
+              "invariant_violation",
+              "hard_overload",
+              "limit_conflict",
+              "upper_limit",
+              "lower_limit",
+              "force_sensor_invalid",
+              "position_sensor_invalid",
+              "motor_stall",
+              "watchdog_timeout",
+              "host_timeout",
+              "state_timeout",
+              "never_stable",
+              "data_quality"
+            ]
+          },
+          "at_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "duration_s": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d3-controller.schema.json",
+  "title": "D3 Controller Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "controller_id",
+    "kp",
+    "ki",
+    "kd",
+    "anti_windup_gain",
+    "target_slew_au_s",
+    "output_limit",
+    "integral_limit",
+    "tolerance_force_au",
+    "tolerance_rate_au_s",
+    "min_stable_s"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "controller_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kp": {
+      "type": "number",
+      "minimum": 0
+    },
+    "ki": {
+      "type": "number",
+      "minimum": 0
+    },
+    "kd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "anti_windup_gain": {
+      "type": "number",
+      "minimum": 0
+    },
+    "target_slew_au_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "output_limit": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "integral_limit": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "tolerance_force_au": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "tolerance_rate_au_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "min_stable_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}
