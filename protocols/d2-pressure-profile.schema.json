@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/d2-pressure-profile.schema.json",
+  "title": "D2 Pressure Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile_id", "version", "seed", "repeat_count", "steps"],
+  "properties": {
+    "profile_id": {"type": "string", "minLength": 1},
+    "version": {"const": "1.0.0"},
+    "seed": {"type": "integer"},
+    "repeat_count": {"type": "integer", "minimum": 1},
+    "steps": {
+      "type": "array", "minItems": 1, "maxItems": 20,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["target_force_au", "approach_s", "min_stable_s", "acquire_s", "tolerance_abs_au", "tolerance_rate_au_s", "timeout_s"],
+        "properties": {
+          "target_force_au": {"type": "number", "minimum": 0},
+          "approach_s": {"type": "number", "minimum": 0},
+          "min_stable_s": {"type": "number", "minimum": 0},
+          "acquire_s": {"type": "number", "exclusiveMinimum": 0},
+          "tolerance_abs_au": {"type": "number", "minimum": 0},
+          "tolerance_rate_au_s": {"type": "number", "minimum": 0},
+          "timeout_s": {"type": "number", "minimum": 0}
+        }
+      }
+    }
+  }
+}
