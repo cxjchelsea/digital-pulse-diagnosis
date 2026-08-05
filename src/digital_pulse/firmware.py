@@ -104,6 +104,13 @@ class DeviceClient:
         self._tx_sequence += 1
         return request_id
 
+    def reconnect(self, transport: DeviceTransport) -> None:
+        """Attach a newly discovered port while preserving monotonic host IDs."""
+        if transport is self.transport:
+            raise ValueError("reconnect requires a new transport")
+        self.transport = transport
+        self._rx = b""
+
     def receive_frames(self) -> list[bytes]:
         while True:
             chunk = self.transport.read()
@@ -112,4 +119,3 @@ class DeviceClient:
             self._rx += chunk
         frames, self._rx = split_frames(self._rx)
         return frames
-
