@@ -46,10 +46,13 @@ class D2FaultConfig:
     gain_error: float = 1.0
     noise_std: float = 0.0
     drift_per_s: float = 0.0
+    nonlinearity: float = 0.0
     hysteresis_au: float = 0.0
     clipping_raw: float | None = None
     motion_start_s: float | None = None
     motion_duration_s: float = 0.0
+    sensor_disconnect_start_s: float | None = None
+    sensor_disconnect_duration_s: float = 0.0
     never_stable_step: int | None = None
 
 
@@ -85,7 +88,7 @@ def run_d2_experiment(profile: PressureProfile, calibration: CalibrationRecord, 
                 force_true += faults.hysteresis_au
             if faults.never_stable_step == index:
                 force_true += step.tolerance_abs_au * 2 * np.sin(2 * np.pi * t)
-            raw = (force_true * 1000 * faults.gain_error + faults.zero_offset +
+            raw = (force_true * 1000 * faults.gain_error + faults.nonlinearity * force_true ** 2 + faults.zero_offset +
                    faults.drift_per_s * t + rng.normal(0, faults.noise_std, count))
             if faults.clipping_raw is not None:
                 raw = np.clip(raw, -faults.clipping_raw, faults.clipping_raw)
@@ -95,6 +98,12 @@ def run_d2_experiment(profile: PressureProfile, calibration: CalibrationRecord, 
             except CalibrationError as exc:
                 force = np.asarray([], dtype=float)
                 failure = exc.code
+            if len(force) and faults.sensor_disconnect_start_s is not None:
+                disconnected = ((t >= faults.sensor_disconnect_start_s) &
+                                (t < faults.sensor_disconnect_start_s + faults.sensor_disconnect_duration_s))
+                force[disconnected] = np.nan
+                if disconnected.any():
+                    failure = "sensor_disconnect"
             pulse = np.sin(2 * np.pi * heart_rate_bpm / 60 * t) * (1 + step.target_force_au / 100)
             pulse += rng.normal(0, 0.03, count)
             if faults.motion_start_s is not None:
@@ -141,4 +150,3 @@ def run_d2_experiment(profile: PressureProfile, calibration: CalibrationRecord, 
     }
     report["report_sha256"] = hashlib.sha256(json.dumps(report, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return report
-
