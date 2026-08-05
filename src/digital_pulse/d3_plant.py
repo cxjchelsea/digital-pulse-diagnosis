@@ -124,6 +124,7 @@ class D3Plant:
         self.config = config
         self.timing = timing
         self.observation_config = observation
+        self._seed = seed
         self._rng = random.Random(seed)
         self._initial_state = initial_state or PlantState(position_au=config.lower_position_au)
         self._validate_state(self._initial_state)
@@ -148,7 +149,7 @@ class D3Plant:
 
     def reset(self) -> PlantState:
         self.state = self._initial_state
-        self._rng.seed(self._rng.seed)
+        self._rng.seed(self._seed)
         delay_length = self.observation_config.force_delay_steps + 1
         self._force_delay = deque([self.state.force_au] * delay_length, maxlen=delay_length)
         self._frozen_position = None
