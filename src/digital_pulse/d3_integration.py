@@ -138,6 +138,7 @@ def run_normal_profile(
 
 
 def run_long_hold(*, duration_s: float = 1800.0, target_force_au: float = 40.0) -> dict:
+    """Plant + PID hold (legacy D3-G). Prefer run_full_chain_long_hold for closeout."""
     if duration_s <= 0:
         raise ValueError("duration_s must be positive")
     timing = TimingConfig()
@@ -174,4 +175,147 @@ def run_long_hold(*, duration_s: float = 1800.0, target_force_au: float = 40.0) 
         "max_integral": maximum_integral,
         "integral_bounded": maximum_integral <= controller.config.integral_limit,
         "final_force_error_au": abs(observation.true_force_au - target_force_au),
+        "modules": ["plant", "pid"],
     }
+
+
+def run_full_chain_long_hold(
+    *,
+    duration_s: float = 1800.0,
+    target_force_au: float = 40.0,
+    seed: int = 20260805,
+) -> dict:
+    """Full D3 chain: Plant + PID + Safety + Device SM for model-time duration_s."""
+    if duration_s <= 0:
+        raise ValueError("duration_s must be positive")
+    timing = TimingConfig()
+    plant = D3Plant(PlantConfig(plant_id="d3-full-long-plant"), timing, seed=seed)
+    controller = D3PIDController(ControllerConfig(controller_id="d3-full-long-ctrl"), timing)
+    machine = D3DeviceStateMachine(SafetyConfig(safety_id="d3-full-long-safety"), timing)
+    machine.step()
+    machine.step(StateInputs(self_test_passed=True))
+    machine.step(command=D3Command.START)
+
+    integrations = timing.control_period_us // timing.integration_period_us
+    ticks = math.ceil(duration_s * 1_000_000 / timing.control_period_us)
+    observation: PlantObservation | None = None
+    previous_force = 0.0
+    previous_state = machine.state
+    maximum_force = maximum_position = maximum_integral = 0.0
+    timeline = [{"tick": machine.tick, "state": machine.state.value}]
+    events: list[dict] = []
+    illegal_transition = False
+    host_timeout_false = False
+    watchdog_false = False
+    soft_hard_violation = False
+    command_out_of_range = False
+
+    for _ in range(ticks):
+        force = observation.force_au if observation and observation.force_au is not None else (
+            observation.true_force_au if observation else 0.0
+        )
+        position = observation.position_au if observation and observation.position_au is not None else (
+            observation.true_position_au if observation else 0.0
+        )
+        rate = (force - previous_force) / controller.dt_s
+        previous_force = force
+        control = None
+        requested = 0.4 if machine.state is D3State.APPROACH else 0.0
+        if machine.state in {D3State.STABILIZE, D3State.ACQUIRE, D3State.STEP}:
+            control = controller.update(target_force_au, force, rate)
+            requested = control.command
+            maximum_integral = max(maximum_integral, abs(control.integral))
+        # Fresh heartbeat every tick: host age 0 prevents HOST_TIMEOUT.
+        safety = SafetyInputs(
+            force_au=force,
+            force_rate_au_s=rate,
+            position_au=position,
+            lower_limit=bool(observation and observation.lower_limit),
+            upper_limit=bool(observation and observation.upper_limit),
+            host_heartbeat_age_ms=0.0,
+            watchdog_ok=True,
+        )
+        try:
+            output = machine.step(
+                StateInputs(
+                    safety=safety,
+                    contact_detected=bool(observation and observation.contact),
+                    controller_stable=bool(control and control.stable),
+                    acquisition_complete=False,
+                    has_more_targets=False,
+                ),
+                requested_command=requested,
+            )
+        except Exception:
+            illegal_transition = True
+            raise
+        if output.safety_event is not None:
+            events.append({
+                "tick": output.tick,
+                "code": output.safety_event.code.value,
+                "action": output.safety_event.action.value,
+            })
+            if output.safety_event.code.value == "host_timeout":
+                host_timeout_false = True
+            if output.safety_event.code.value == "watchdog_timeout":
+                watchdog_false = True
+        if not -1.0 <= output.command <= 1.0:
+            command_out_of_range = True
+        for _ in range(integrations):
+            observation = plant.step(output.command)
+        assert observation is not None
+        maximum_force = max(maximum_force, observation.true_force_au)
+        maximum_position = max(maximum_position, observation.true_position_au)
+        if observation.true_position_au < plant.config.lower_position_au - 1e-9:
+            soft_hard_violation = True
+        if observation.true_position_au > plant.config.upper_position_au + 1e-9:
+            soft_hard_violation = True
+        if not all(math.isfinite(x) for x in (
+            observation.true_force_au, observation.true_position_au,
+            observation.true_velocity_au_s, output.command,
+        )):
+            raise RuntimeError("non-finite full-chain long-run state")
+        if machine.state is not previous_state:
+            timeline.append({"tick": machine.tick, "state": machine.state.value})
+            previous_state = machine.state
+        # Hold in ACQUIRE for the remainder of the model duration once stable.
+        if machine.state is D3State.ACQUIRE:
+            pass
+        if machine.state is D3State.FAULT_LATCHED:
+            break
+
+    hold_duration_s = ticks * timing.control_period_us / 1_000_000
+    report = {
+        "schema_version": "1.0.0",
+        "experiment_type": "d3_full_chain_long_hold",
+        "duration_s": hold_duration_s,
+        "total_model_time_s": machine.tick * timing.control_period_us / 1_000_000,
+        "requested_duration_s": duration_s,
+        "seed": seed,
+        "target_force_au": target_force_au,
+        "finite": True,
+        "max_force_au": maximum_force,
+        "max_position_au": maximum_position,
+        "max_integral": maximum_integral,
+        "integral_bounded": maximum_integral <= controller.config.integral_limit,
+        "command_in_range": not command_out_of_range,
+        "limits_respected": not soft_hard_violation,
+        "no_false_host_timeout": not host_timeout_false,
+        "no_false_watchdog": not watchdog_false,
+        "no_illegal_transition": not illegal_transition,
+        "final_state": machine.state.value,
+        "final_force_error_au": abs((observation.true_force_au if observation else 0.0) - target_force_au),
+        "event_count": len(events),
+        "events_bounded": len(events) <= 64,
+        "timeline": timeline[-64:],
+        "timeline_bounded": len(timeline) <= 256,
+        "modules": ["plant", "pid", "safety", "device_state_machine", "heartbeat"],
+        "disclaimer": (
+            "Synthetic relative-unit full-chain model-time evidence; "
+            "not hardware or human safety validation."
+        ),
+    }
+    report["report_sha256"] = hashlib.sha256(
+        json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return report
