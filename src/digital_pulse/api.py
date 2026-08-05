@@ -9,8 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .device import DeviceSimulator, PressureStep, SimulationConfig
+from .firmware import DeviceClient, FirmwareSimulator
 from .pipeline import process_session
+from .protocol import CommandCode, decode_response
 from .session import SessionWriter, capture_frames
+from .transport import LinkFaults, VirtualSerialTransport
 
 
 class SimulationRequest(BaseModel):
@@ -24,12 +27,40 @@ class SimulationRequest(BaseModel):
 def create_app(data_root: Path | None = None) -> FastAPI:
     root = data_root or Path(os.environ.get("PULSE_DATA_ROOT", "sessions"))
     root.mkdir(parents=True, exist_ok=True)
-    app = FastAPI(title="Digital Pulse P0 API", version="0.1.0")
+    app = FastAPI(title="Adaptive Radial Pulse API", version="0.2.0")
     app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "stage": "P0", "medical_use": False}
+        return {"status": "ok", "stage": "D1", "medical_use": False}
+
+    @app.get("/api/device/d1-demo")
+    def d1_demo(fragment_size: int = 7):
+        """Run the production command protocol over a fragmented virtual link."""
+        host, device = VirtualSerialTransport.pair(
+            LinkFaults(max_chunk_size=max(1, min(fragment_size, 128))),
+            LinkFaults(max_chunk_size=max(1, min(fragment_size, 128))),
+        )
+        client, firmware = DeviceClient(host), FirmwareSimulator(device)
+        exchanges = []
+        for command in (CommandCode.HELLO, CommandCode.CAPABILITIES, CommandCode.START, CommandCode.STOP):
+            request_id = client.send(command)
+            firmware.poll()
+            response = decode_response(client.receive_frames()[0])
+            exchanges.append({
+                "command": command.name,
+                "request_id": request_id,
+                "status": response.status.name,
+                "error": response.error.name,
+                "data": response.data,
+            })
+        return {
+            "transport": "virtual_serial",
+            "fragment_size": fragment_size,
+            "connected": host.connected,
+            "exchanges": exchanges,
+            "final_state": firmware.state.name,
+        }
 
     @app.post("/api/sessions/simulate")
     def simulate(request: SimulationRequest):
