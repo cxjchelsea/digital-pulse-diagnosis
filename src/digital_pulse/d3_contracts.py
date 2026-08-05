@@ -236,6 +236,78 @@ class SafetyConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ProfileAcceptanceConfig:
+    """Experiment acceptance thresholds for normal multi-target profiles.
+
+    These are model-regression gates, not device-side real-time safety limits.
+    """
+
+    max_stable_time_s: float = 3.0
+    max_steady_error_au: float = 2.0
+    max_overshoot_percent: float = 10.0
+    schema_version: str = SCHEMA_VERSION
+
+    def validate(self) -> None:
+        if self.schema_version != SCHEMA_VERSION:
+            raise D3ContractError("unsupported_schema", "unsupported profile acceptance schema")
+        for name in ("max_stable_time_s", "max_steady_error_au", "max_overshoot_percent"):
+            _finite(name, getattr(self, name), strictly_positive=True)
+
+    def canonical(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def checksum(self) -> str:
+        payload = json.dumps(self.canonical(), sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(payload).hexdigest()
+
+
+def canonical_dataclass(obj: Any) -> dict[str, Any]:
+    """Normalize a frozen config dataclass for hashing (no runtime fields)."""
+    if hasattr(obj, "canonical") and callable(obj.canonical):
+        return obj.canonical()
+    data = asdict(obj)
+    return data
+
+
+def config_sha256(data: dict[str, Any]) -> str:
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def config_bundle_report(
+    *,
+    plant: PlantConfig,
+    controller: ControllerConfig,
+    safety: SafetyConfig,
+    timing: TimingConfig,
+    profile_acceptance: ProfileAcceptanceConfig | None = None,
+) -> dict[str, Any]:
+    """Return configs + stable hashes for acceptance evidence."""
+    plant.validate()
+    controller.validate()
+    safety.validate()
+    timing.validate()
+    acceptance = profile_acceptance or ProfileAcceptanceConfig()
+    acceptance.validate()
+    configs = {
+        "plant": canonical_dataclass(plant),
+        "controller": canonical_dataclass(controller),
+        "safety": canonical_dataclass(safety),
+        "timing": canonical_dataclass(timing),
+        "profile_acceptance": acceptance.canonical(),
+    }
+    hashes = {
+        "plant_sha256": config_sha256(configs["plant"]),
+        "controller_sha256": config_sha256(configs["controller"]),
+        "safety_sha256": config_sha256(configs["safety"]),
+        "timing_sha256": config_sha256(configs["timing"]),
+        "profile_acceptance_sha256": config_sha256(configs["profile_acceptance"]),
+    }
+    hashes["combined_sha256"] = config_sha256(configs)
+    return {"configs": configs, "config_hashes": hashes}
+
+
+@dataclass(frozen=True, slots=True)
 class FaultInjection:
     code: FaultCode
     at_s: float

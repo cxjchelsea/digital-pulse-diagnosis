@@ -8,7 +8,14 @@ import json
 import math
 
 from digital_pulse.d3_contracts import (
-    ControllerConfig, D3Command, D3State, PlantConfig, SafetyConfig, TimingConfig,
+    ControllerConfig,
+    D3Command,
+    D3State,
+    PlantConfig,
+    ProfileAcceptanceConfig,
+    SafetyConfig,
+    TimingConfig,
+    config_bundle_report,
 )
 from digital_pulse.d3_controller import D3PIDController
 from digital_pulse.d3_plant import D3Plant, PlantObservation
@@ -31,13 +38,19 @@ def run_normal_profile(
     seed: int = 20260805,
     acquire_s: float = 0.5,
     max_duration_s: float = 30.0,
+    acceptance: ProfileAcceptanceConfig | None = None,
 ) -> dict:
     if not targets or any(not math.isfinite(x) or x <= 0 for x in targets):
         raise ValueError("targets must be finite and positive")
+    acceptance = acceptance or ProfileAcceptanceConfig()
+    acceptance.validate()
     timing = TimingConfig()
-    plant = D3Plant(PlantConfig(plant_id="d3-g-plant"), timing, seed=seed)
-    controller = D3PIDController(ControllerConfig(controller_id="d3-g-controller"), timing)
-    machine = D3DeviceStateMachine(SafetyConfig(safety_id="d3-g-safety"), timing)
+    plant_config = PlantConfig(plant_id="d3-g-plant")
+    controller_config = ControllerConfig(controller_id="d3-g-controller")
+    safety_config = SafetyConfig(safety_id="d3-g-safety")
+    plant = D3Plant(plant_config, timing, seed=seed)
+    controller = D3PIDController(controller_config, timing)
+    machine = D3DeviceStateMachine(safety_config, timing)
     machine.step()
     machine.step(StateInputs(self_test_passed=True))
     machine.step(command=D3Command.START)
@@ -102,7 +115,11 @@ def run_normal_profile(
             stable_time = ((stable_tick or machine.tick) - (step_start_tick or machine.tick)) * controller.dt_s
             metrics.append(StepMetric(
                 targets[target_index], stable_time, error, overshoot,
-                stable_time <= 3.0 and error <= 2.0 and overshoot <= 10.0,
+                (
+                    stable_time <= acceptance.max_stable_time_s
+                    and error <= acceptance.max_steady_error_au
+                    and overshoot <= acceptance.max_overshoot_percent
+                ),
             ))
             if target_index < len(targets) - 1:
                 target_index += 1
@@ -118,6 +135,13 @@ def run_normal_profile(
         if machine.state is D3State.IDLE and len(metrics) == len(targets):
             break
 
+    bundle = config_bundle_report(
+        plant=plant_config,
+        controller=controller_config,
+        safety=safety_config,
+        timing=timing,
+        profile_acceptance=acceptance,
+    )
     report = {
         "schema_version": "1.0.0",
         "targets_au": list(targets),
@@ -129,6 +153,9 @@ def run_normal_profile(
         "timeline": timeline,
         "max_force_au": max((item.target_force_au * (1 + item.overshoot_percent / 100) for item in metrics), default=0.0),
         "all_metrics_passed": len(metrics) == len(targets) and all(item.passed for item in metrics),
+        "profile_acceptance": bundle["configs"]["profile_acceptance"],
+        "configs": bundle["configs"],
+        "config_hashes": bundle["config_hashes"],
         "limitations": "Synthetic relative-unit integration evidence; not hardware or human safety validation.",
     }
     report["sha256"] = hashlib.sha256(
@@ -138,6 +165,7 @@ def run_normal_profile(
 
 
 def run_long_hold(*, duration_s: float = 1800.0, target_force_au: float = 40.0) -> dict:
+    """Plant + PID hold (legacy D3-G). Prefer run_full_chain_long_hold for closeout."""
     if duration_s <= 0:
         raise ValueError("duration_s must be positive")
     timing = TimingConfig()
@@ -174,4 +202,158 @@ def run_long_hold(*, duration_s: float = 1800.0, target_force_au: float = 40.0) 
         "max_integral": maximum_integral,
         "integral_bounded": maximum_integral <= controller.config.integral_limit,
         "final_force_error_au": abs(observation.true_force_au - target_force_au),
+        "modules": ["plant", "pid"],
     }
+
+
+def run_full_chain_long_hold(
+    *,
+    duration_s: float = 1800.0,
+    target_force_au: float = 40.0,
+    seed: int = 20260805,
+) -> dict:
+    """Full D3 chain: Plant + PID + Safety + Device SM for model-time duration_s."""
+    if duration_s <= 0:
+        raise ValueError("duration_s must be positive")
+    timing = TimingConfig()
+    plant_config = PlantConfig(plant_id="d3-full-long-plant")
+    controller_config = ControllerConfig(controller_id="d3-full-long-ctrl")
+    safety_config = SafetyConfig(safety_id="d3-full-long-safety")
+    plant = D3Plant(plant_config, timing, seed=seed)
+    controller = D3PIDController(controller_config, timing)
+    machine = D3DeviceStateMachine(safety_config, timing)
+    machine.step()
+    machine.step(StateInputs(self_test_passed=True))
+    machine.step(command=D3Command.START)
+
+    integrations = timing.control_period_us // timing.integration_period_us
+    ticks = math.ceil(duration_s * 1_000_000 / timing.control_period_us)
+    observation: PlantObservation | None = None
+    previous_force = 0.0
+    previous_state = machine.state
+    maximum_force = maximum_position = maximum_integral = 0.0
+    timeline = [{"tick": machine.tick, "state": machine.state.value}]
+    events: list[dict] = []
+    illegal_transition = False
+    host_timeout_false = False
+    watchdog_false = False
+    soft_hard_violation = False
+    command_out_of_range = False
+
+    for _ in range(ticks):
+        force = observation.force_au if observation and observation.force_au is not None else (
+            observation.true_force_au if observation else 0.0
+        )
+        position = observation.position_au if observation and observation.position_au is not None else (
+            observation.true_position_au if observation else 0.0
+        )
+        rate = (force - previous_force) / controller.dt_s
+        previous_force = force
+        control = None
+        requested = 0.4 if machine.state is D3State.APPROACH else 0.0
+        if machine.state in {D3State.STABILIZE, D3State.ACQUIRE, D3State.STEP}:
+            control = controller.update(target_force_au, force, rate)
+            requested = control.command
+            maximum_integral = max(maximum_integral, abs(control.integral))
+        # Fresh heartbeat every tick: host age 0 prevents HOST_TIMEOUT.
+        safety = SafetyInputs(
+            force_au=force,
+            force_rate_au_s=rate,
+            position_au=position,
+            lower_limit=bool(observation and observation.lower_limit),
+            upper_limit=bool(observation and observation.upper_limit),
+            host_heartbeat_age_ms=0.0,
+            watchdog_ok=True,
+        )
+        try:
+            output = machine.step(
+                StateInputs(
+                    safety=safety,
+                    contact_detected=bool(observation and observation.contact),
+                    controller_stable=bool(control and control.stable),
+                    acquisition_complete=False,
+                    has_more_targets=False,
+                ),
+                requested_command=requested,
+            )
+        except Exception:
+            illegal_transition = True
+            raise
+        if output.safety_event is not None:
+            events.append({
+                "tick": output.tick,
+                "code": output.safety_event.code.value,
+                "action": output.safety_event.action.value,
+            })
+            if output.safety_event.code.value == "host_timeout":
+                host_timeout_false = True
+            if output.safety_event.code.value == "watchdog_timeout":
+                watchdog_false = True
+        if not -1.0 <= output.command <= 1.0:
+            command_out_of_range = True
+        for _ in range(integrations):
+            observation = plant.step(output.command)
+        assert observation is not None
+        maximum_force = max(maximum_force, observation.true_force_au)
+        maximum_position = max(maximum_position, observation.true_position_au)
+        if observation.true_position_au < plant.config.lower_position_au - 1e-9:
+            soft_hard_violation = True
+        if observation.true_position_au > plant.config.upper_position_au + 1e-9:
+            soft_hard_violation = True
+        if not all(math.isfinite(x) for x in (
+            observation.true_force_au, observation.true_position_au,
+            observation.true_velocity_au_s, output.command,
+        )):
+            raise RuntimeError("non-finite full-chain long-run state")
+        if machine.state is not previous_state:
+            timeline.append({"tick": machine.tick, "state": machine.state.value})
+            previous_state = machine.state
+        # Hold in ACQUIRE for the remainder of the model duration once stable.
+        if machine.state is D3State.ACQUIRE:
+            pass
+        if machine.state is D3State.FAULT_LATCHED:
+            break
+
+    hold_duration_s = ticks * timing.control_period_us / 1_000_000
+    bundle = config_bundle_report(
+        plant=plant_config,
+        controller=controller_config,
+        safety=safety_config,
+        timing=timing,
+    )
+    report = {
+        "schema_version": "1.0.0",
+        "experiment_type": "d3_full_chain_long_hold",
+        "duration_s": hold_duration_s,
+        "total_model_time_s": machine.tick * timing.control_period_us / 1_000_000,
+        "requested_duration_s": duration_s,
+        "seed": seed,
+        "target_force_au": target_force_au,
+        "finite": True,
+        "max_force_au": maximum_force,
+        "max_position_au": maximum_position,
+        "max_integral": maximum_integral,
+        "integral_bounded": maximum_integral <= controller.config.integral_limit,
+        "command_in_range": not command_out_of_range,
+        "limits_respected": not soft_hard_violation,
+        "no_false_host_timeout": not host_timeout_false,
+        "no_false_watchdog": not watchdog_false,
+        "no_illegal_transition": not illegal_transition,
+        "final_state": machine.state.value,
+        "final_force_error_au": abs((observation.true_force_au if observation else 0.0) - target_force_au),
+        "event_count": len(events),
+        "events_bounded": len(events) <= 64,
+        "timeline": timeline[-64:],
+        "timeline_bounded": len(timeline) <= 256,
+        "modules": ["plant", "pid", "safety", "device_state_machine", "heartbeat"],
+        "configs": bundle["configs"],
+        "config_hashes": bundle["config_hashes"],
+        "disclaimer": (
+            "Synthetic relative-unit full-chain model-time evidence; "
+            "not hardware or human safety validation."
+        ),
+    }
+    report["report_sha256"] = hashlib.sha256(
+        json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return report

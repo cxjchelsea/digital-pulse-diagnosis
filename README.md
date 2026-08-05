@@ -58,8 +58,10 @@ D0（原P0）已形成并合并完整的合成环境实施闭环。以下文件�
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux/macOS: source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
+python -m pytest -q
 python -m unittest discover -s tests -v
+python scripts/generate_d3_acceptance.py
 pulse-simulator --output simulated-session.bin --forces 40 80 120
 pulse-api
 ```
@@ -83,7 +85,7 @@ API 默认位于 `http://localhost:8000`，前端默认位于 `http://localhost:
 - [D3阶段设计与实现详解](docs/00-项目总览/D3阶段设计与实现详解.md)（理解文档：自动施压与安全仿真做了什么）
 - [D3自动施压与安全控制数字仿真实施方案](docs/00-项目总览/D3自动施压与安全控制数字仿真实施方案.md)
 - [D3被控对象与传感观测模型设计](docs/03-信号处理/D3被控对象与传感观测模型设计.md)
-- [D3阶段验收报告](docs/05-验证与实验/D3阶段验收报告.md)（已通过）
+- [D3阶段验收报告](docs/05-验证与实验/D3阶段验收报告.md)（已通过；含完整卸载、ABORT闭环、1800s完整链路与CI证据）
 - [D2阶段设计与实现详解](docs/00-项目总览/D2阶段设计与实现详解.md)（理解文档：标定与多压力实验做了什么）
 - [D2标定与多压力数字实验实施方案](docs/00-项目总览/D2标定与多压力数字实验实施方案.md)
 - [D1阶段设计与实现详解](docs/00-项目总览/D1阶段设计与实现详解.md)（理解文档：D1 做了什么、没做什么）
@@ -139,7 +141,7 @@ H1–H4逐步完成单点“关部”桌面式原型；其中H1先完成手动�
 8. [D3自动施压与安全控制数字仿真实施方案](docs/00-项目总览/D3自动施压与安全控制数字仿真实施方案.md)：评审控制、安全和故障验收基线；
 9. 进入当前阶段对应目录，不需要一次读完所有文档。
 
-当前状态是D0至D2已完成；D3-A至D3-G已完成并验收；正常Profile、30分钟模型时长、故障矩阵、API重放、Web构建和手动验收均通过。D3验收后，再执行：
+当前状态是D0至D2已完成；D3功能与收尾实现完成，处于PR收尾强化阶段（尚未在main正式冻结）。正式验收绑定全部门禁、自动识别CI证据来源、配置哈希与T01–T24节点证据；PR合并、main CI通过并打`d3-v1.0.0`后进入H1准备：
 
 - [首批传感器选型实验方案](docs/02-采集硬件/H1首批传感器选型实验方案.md)；
 - [Issue #6：H1首批传感器与采购清单](https://github.com/cxjchelsea/digital-pulse-diagnosis/issues/6)；

@@ -16,6 +16,7 @@ dist/
 build/
 .vite/
 coverage/
+*.tsbuildinfo
 
 # PlatformIO / embedded
 .pio/
@@ -57,3 +58,6 @@ hardware/cad/exports/
 logs/
 tmp/
 *.log
+
+# Generated acceptance / local artifacts
+artifacts/
