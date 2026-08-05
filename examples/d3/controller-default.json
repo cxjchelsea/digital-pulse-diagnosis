@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "controller_id": "pid-default",
+  "kp": 0.08,
+  "ki": 0.03,
+  "kd": 0.002,
+  "anti_windup_gain": 0.2,
+  "target_slew_au_s": 25,
+  "output_limit": 1,
+  "integral_limit": 1,
+  "tolerance_force_au": 2,
+  "tolerance_rate_au_s": 2,
+  "min_stable_s": 0.5
+}
