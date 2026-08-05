@@ -7,6 +7,17 @@ from digital_pulse.api import create_app
 
 
 class ApiTests(unittest.TestCase):
+    def test_d1_device_demo_handshake_and_state(self):
+        with TemporaryDirectory() as directory:
+            client = TestClient(create_app(Path(directory)))
+            response = client.get("/api/device/d1-demo?fragment_size=3")
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            self.assertTrue(body["connected"])
+            self.assertEqual([item["command"] for item in body["exchanges"]], ["HELLO", "CAPABILITIES", "START", "STOP"])
+            self.assertTrue(all(item["status"] == "ACK" for item in body["exchanges"]))
+            self.assertEqual(body["final_state"], "IDLE")
+
     def test_simulation_endpoint_creates_report(self):
         with TemporaryDirectory() as directory:
             client = TestClient(create_app(Path(directory)))
