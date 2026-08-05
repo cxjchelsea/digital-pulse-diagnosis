@@ -17,6 +17,8 @@ class ApiTests(unittest.TestCase):
             self.assertTrue(body["disclaimer"].startswith("Synthetic D2"))
             replay = client.get(f"/api/experiments/d2/{body['report_sha256']}")
             self.assertEqual(replay.json(), body)
+            rebuilt = client.post(f"/api/experiments/d2/{body['report_sha256']}/replay")
+            self.assertTrue(rebuilt.json()["identical"])
             blocked = client.post("/api/experiments/d2/run", json={"sample_rate_hz": 100, "expired_calibration": True})
             self.assertFalse(blocked.json()["analysis_allowed"])
 
