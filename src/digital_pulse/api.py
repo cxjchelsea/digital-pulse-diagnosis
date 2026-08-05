@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from .device import DeviceSimulator, PressureStep, SimulationConfig
 from .calibration import CalibrationModel, CalibrationRecord
 from .d2_experiment import D2FaultConfig, D2PressureStep, PressureProfile, run_d2_experiment
+from .d3_api import create_d3_router
 from .firmware import DeviceClient, FirmwareSimulator
 from .pipeline import process_session
 from .protocol import CommandCode, decode_response
@@ -44,10 +45,11 @@ def create_app(data_root: Path | None = None) -> FastAPI:
     root.mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="Adaptive Radial Pulse API", version="0.2.0")
     app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
+    app.include_router(create_d3_router(root))
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "stage": "D2", "medical_use": False}
+        return {"status": "ok", "stage": "D3", "medical_use": False}
 
     @app.get("/api/device/d1-demo")
     def d1_demo(fragment_size: int = 7):
