@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-sample.schema.json",
+  "title": "M1 Sample",
+  "description": "Cross-layer raw acquisition fact for simulator and future hardware. Engineering analysis conclusions do not belong here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "frame_sequence",
+    "device_time_us",
+    "host_received_at_utc",
+    "source_type",
+    "pulse",
+    "load",
+    "ppg",
+    "device_state",
+    "fault_flags",
+    "receive_integrity"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "frame_sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "device_time_us": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Device monotonic clock in microseconds since device boot or session origin."
+    },
+    "host_received_at_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Host UTC receive time in RFC 3339 / ISO-8601."
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["simulator", "replay", "hardware", "imported"]
+    },
+    "pulse": {
+      "$ref": "#/$defs/rawChannel"
+    },
+    "load": {
+      "$ref": "#/$defs/rawChannel"
+    },
+    "ppg": {
+      "$ref": "#/$defs/rawChannel"
+    },
+    "target_load_raw": {
+      "type": ["integer", "null"],
+      "description": "Optional target contact load in protocol integer units; null for manual single-point M1."
+    },
+    "motor_position_raw": {
+      "type": ["integer", "null"],
+      "description": "Optional actuator position count; null when no actuator is present."
+    },
+    "device_state": {
+      "type": "string",
+      "enum": [
+        "BOOT",
+        "SELF_TEST",
+        "IDLE",
+        "APPROACH",
+        "CONTACT",
+        "STABILIZE",
+        "ACQUIRE",
+        "STEP",
+        "RETRACT",
+        "FAULT",
+        "SAFE_HOLD"
+      ]
+    },
+    "fault_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "lower_limit",
+          "upper_limit",
+          "emergency_stop",
+          "pulse_saturated",
+          "force_saturated",
+          "sensor_disconnected",
+          "buffer_overflow",
+          "link_degraded"
+        ]
+      }
+    },
+    "receive_integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Host-side receive assessment after decode. Not asserted by the wire sender as authoritative truth.",
+      "required": ["crc_valid", "sequence_valid", "timestamp_valid"],
+      "properties": {
+        "crc_valid": {
+          "type": ["boolean", "null"]
+        },
+        "sequence_valid": {
+          "type": ["boolean", "null"]
+        },
+        "timestamp_valid": {
+          "type": ["boolean", "null"]
+        }
+      }
+    },
+    "protocol_version": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "firmware_version": {
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "hardware_version": {
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "calibration_version": {
+      "type": ["string", "null"],
+      "maxLength": 64
+    }
+  },
+  "$defs": {
+    "rawChannel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "status", "clipping"],
+      "properties": {
+        "value": {
+          "type": ["integer", "null"],
+          "description": "Raw ADC count. Null means absent/failed; never use 0 to encode missing."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_configured",
+            "connected",
+            "disconnected",
+            "open_circuit",
+            "short_circuit",
+            "read_failed",
+            "unknown"
+          ]
+        },
+        "clipping": {
+          "type": "string",
+          "enum": ["none", "lower", "upper", "both"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "rep-0001",
+  "session_id": "m1p0-sim-normal-001",
+  "source_type": "simulator",
+  "report_status": "complete",
+  "analysis_allowed": true,
+  "quality_summary": {
+    "primary_label": "acceptable",
+    "reason_codes": [],
+    "window_ids": ["window-0001"]
+  },
+  "integrity_summary": {
+    "frame_count": 15000,
+    "crc_error_count": 0,
+    "missing_frame_count": 0,
+    "timestamp_error_count": 0,
+    "raw_persistence_status": "ok"
+  },
+  "objective_parameters": {
+    "heart_rate_bpm": 72.0,
+    "beat_count": 8,
+    "pulse_amplitude_raw": 950.0,
+    "valid_duration_s": 30.0
+  },
+  "decision_summary": {
+    "final_action": "accept",
+    "decision_ids": ["dec-0001"],
+    "reason_codes": ["quality_acceptable"]
+  },
+  "version_manifest": {
+    "protocol_version": 0,
+    "calibration_version": "pending_h1_calibration",
+    "signal_processing_version": "s1-pre-0.0.0",
+    "decision_rule_version": "i1-pre-0.0.0",
+    "software_commit_sha": "d7f45006dee37e89c9790c98a11750eb7848bc82",
+    "configuration_digest": "a40d869fd9ba17bf31ecc5080379cc8a684318db60d73ccd11d4711c5f921255"
+  },
+  "limitations": [
+    "synthetic_input",
+    "pending_h1_calibration",
+    "not_hardware_validated",
+    "not_for_medical_use"
+  ],
+  "generated_at_utc": "2026-08-06T05:01:05Z",
+  "parameter_status": "pending_h1_calibration",
+  "failure_summary": null
+}

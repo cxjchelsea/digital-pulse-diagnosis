@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-report.schema.json",
+  "title": "M1 Report",
+  "description": "Traceable engineering report. Formal objective parameters are forbidden when analysis_allowed is false.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_id",
+    "session_id",
+    "source_type",
+    "report_status",
+    "analysis_allowed",
+    "quality_summary",
+    "integrity_summary",
+    "objective_parameters",
+    "decision_summary",
+    "version_manifest",
+    "limitations",
+    "generated_at_utc",
+    "parameter_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "report_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["simulator", "replay", "hardware", "imported"]
+    },
+    "report_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "incomplete",
+        "failed",
+        "aborted",
+        "manual_review_required"
+      ]
+    },
+    "analysis_allowed": {
+      "type": "boolean"
+    },
+    "quality_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_label", "reason_codes", "window_ids"],
+      "properties": {
+        "primary_label": {
+          "type": ["string", "null"],
+          "enum": [
+            null,
+            "acceptable",
+            "weak_signal",
+            "no_contact",
+            "saturated",
+            "unstable_baseline",
+            "motion_artifact",
+            "insufficient_duration",
+            "data_integrity_failure",
+            "reference_mismatch",
+            "manual_review_required"
+          ]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "window_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "integrity_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_count",
+        "crc_error_count",
+        "missing_frame_count",
+        "timestamp_error_count",
+        "raw_persistence_status"
+      ],
+      "properties": {
+        "frame_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "crc_error_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_frame_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timestamp_error_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw_persistence_status": {
+          "type": "string",
+          "enum": ["ok", "failed", "partial", "not_started"]
+        }
+      }
+    },
+    "objective_parameters": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "Must be null or empty object when analysis_allowed is false.",
+      "properties": {
+        "heart_rate_bpm": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0
+        },
+        "beat_count": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "pulse_amplitude_raw": {
+          "type": ["number", "null"]
+        },
+        "valid_duration_s": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "decision_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["final_action", "decision_ids", "reason_codes"],
+      "properties": {
+        "final_action": {
+          "type": ["string", "null"],
+          "enum": [
+            null,
+            "accept",
+            "retry_same_position",
+            "reposition",
+            "manual_review",
+            "stop",
+            "abort_and_release",
+            "hold",
+            "adjust_pressure",
+            "continue_scan"
+          ]
+        },
+        "decision_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "version_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "calibration_version",
+        "signal_processing_version",
+        "decision_rule_version",
+        "software_commit_sha",
+        "configuration_digest"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "calibration_version": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "signal_processing_version": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "decision_rule_version": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "software_commit_sha": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "configuration_digest": {
+          "type": ["string", "null"],
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "synthetic_input",
+          "pending_h1_calibration",
+          "not_hardware_validated",
+          "not_for_medical_use"
+        ]
+      }
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "parameter_status": {
+      "type": "string",
+      "enum": [
+        "pending_h1_calibration",
+        "synthetic_only",
+        "candidate",
+        "frozen"
+      ]
+    },
+    "failure_summary": {
+      "type": ["string", "null"],
+      "maxLength": 1024
+    }
+  }
+}

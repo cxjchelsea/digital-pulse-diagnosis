@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-quality.schema.json",
+  "title": "M1 Quality Result",
+  "description": "Explainable quality assessment for a time window. Thresholds may be pending_h1_calibration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "window_id",
+    "start_device_time_us",
+    "end_device_time_us",
+    "label",
+    "score",
+    "confidence",
+    "reason_codes",
+    "metrics",
+    "valid_duration_s",
+    "processing_version",
+    "parameter_version",
+    "parameter_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "window_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "start_device_time_us": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "end_device_time_us": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "label": {
+      "type": "string",
+      "description": "Primary explainable quality state for the window.",
+      "enum": [
+        "acceptable",
+        "weak_signal",
+        "no_contact",
+        "saturated",
+        "unstable_baseline",
+        "motion_artifact",
+        "insufficient_duration",
+        "data_integrity_failure",
+        "reference_mismatch",
+        "manual_review_required"
+      ]
+    },
+    "score": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Optional heuristic score in [0,1]. Not a calibrated clinical confidence."
+    },
+    "confidence": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Must be null while parameter_status is pending_h1_calibration to avoid pseudo-precision."
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "too_short",
+          "near_constant",
+          "no_contact",
+          "weak_amplitude",
+          "lower_saturation",
+          "upper_saturation",
+          "unstable_baseline",
+          "motion_artifact",
+          "insufficient_beats",
+          "unstable_intervals",
+          "crc_errors",
+          "sequence_gaps",
+          "timestamp_errors",
+          "sensor_disconnected",
+          "reference_unavailable",
+          "reference_mismatch",
+          "persistence_failed",
+          "manual_review_requested"
+        ]
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "valid_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "clipping_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "baseline_drift_raw": {
+          "type": "number"
+        },
+        "pulse_std_raw": {
+          "type": "number",
+          "minimum": 0
+        },
+        "beat_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ppg_match_rate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "valid_duration_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "processing_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "parameter_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "parameter_status": {
+      "type": "string",
+      "enum": [
+        "pending_h1_calibration",
+        "synthetic_only",
+        "candidate",
+        "frozen"
+      ]
+    }
+  }
+}
