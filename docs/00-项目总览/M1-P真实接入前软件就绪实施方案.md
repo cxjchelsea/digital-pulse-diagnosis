@@ -1,6 +1,6 @@
 # M1-P真实接入前软件就绪实施方案
 
-版本：0.1.0；状态：启动中。
+版本：0.2.0；状态：M1-P0已完成，M1-P1未开始。
 
 ## 1. 定位
 
@@ -60,11 +60,13 @@ M1正式数据契约
 
 ## 4. 工作包
 
-## M1-P0：数据契约与Schema
+## M1-P0：数据契约与Schema（已完成）
 
-### 输出
+### 状态
 
-建议新增机器可读契约：
+M1-P0已冻结五类正式契约与机器可读Schema。M1-P0通过只表示跨层数据结构就绪，不表示M1-P、H1或M1通过，也不开始M1-P1模拟器实现。
+
+### 产物
 
 ```text
 protocols/
@@ -73,35 +75,40 @@ protocols/
 ├── m1-quality.schema.json
 ├── m1-decision.schema.json
 └── m1-report.schema.json
+
+src/digital_pulse/m1_contracts.py
+examples/m1/
+tests/test_m1_contracts.py
+tests/test_m1_schemas.py
 ```
 
-最小样本结构至少包含：
+### 职责边界
 
-- 帧序号和设备时间戳；
-- 动态脉搏原始值；
-- 静态载荷原始值；
-- 参考PPG原始值；
-- 目标载荷和电机位置，可为空；
-- 设备状态和故障标志；
-- 通道连接、削顶和有效性标志；
-- 传感器、ADC、固件、协议和校准版本引用。
+| 契约 | 职责 | 不承载 |
+|---|---|---|
+| M1Sample | 原始采集事实、通道状态、设备状态、主机接收完整性评估 | 最终分析参数、医学结论 |
+| M1Session | 会话溯源、配置、版本、完整性摘要、会话相对文件角色 | 绝对路径、真实阈值 |
+| M1QualityResult | 窗口级可解释质量标签、原因、指标和处理版本 | 校准后的伪精确置信度 |
+| M1Decision | 可审计动作、原因、重采计数、人工覆盖与结果回填 | I1范围外的实际动作执行 |
+| M1Report | 报告状态、阻断关系、版本清单和限制声明 | `analysis_allowed=false`时的正式客观参数 |
 
-会话契约至少包含：
+### 关键规则
 
-- `session_id`和匿名`subject_id`；
-- 数据源类型：`simulator`或`hardware`；
-- 硬件、固件、协议、校准、算法和规则版本；
-- 会话开始、结束、完成状态和失败原因；
-- 原始、处理、事件、决策和报告文件索引；
-- 配置摘要和配置哈希。
+- 时间：设备单调时钟使用`device_time_us`；主机接收使用`host_received_at_utc`；禁止无单位`timestamp`；
+- 缺失值：原始通道用`value=null`加`status`表达未配置/断线/读失败，禁止用`0`表示缺失；
+- 来源：`simulator` / `replay` / `hardware` / `imported`；模拟必须带`scenario_id`、`random_seed`、`simulator_version`；
+- 版本：样本级可引用协议/固件/硬件/校准；会话级包含`signal_processing_version`、`decision_rule_version`、`software_commit_sha`、`configuration_digest`；
+- `pending_h1_calibration`：真实未知阈值必须显式标记；该状态下`confidence`必须为`null`；
+- 完整性：`receive_integrity`是主机解码后的派生评估，不由发送端宣称权威真相；
+- 兼容：D0–D3二进制`DataSample`保持不变，经`data_sample_to_m1_sample`适配进入M1层。
 
 ### 退出条件
 
-- Schema具有版本号；
-- 模拟器、会话写入、处理和报告共用Schema；
-- 缺失必要字段时正式拒绝；
-- 可选硬件字段不会破坏M1-P模拟流程；
-- 兼容性策略和迁移规则明确。
+- Schema具有版本号`1.0.0`；
+- 示例与Python契约均可被Schema拒绝非法字段/枚举；
+- 可选硬件字段不破坏模拟流程；
+- 旧协议适配器不修改原协议对象；
+- D0–D3回归与D3正式验收保持通过。
 
 ## M1-P1：多通道真实风格模拟器
 
