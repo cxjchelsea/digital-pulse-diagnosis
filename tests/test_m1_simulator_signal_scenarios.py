@@ -55,19 +55,11 @@ class M1SimulatorSignalScenarioTests(unittest.TestCase):
     def test_registry_lists_p1b_scenarios_sorted_unique(self):
         names = list_scenarios()
         self.assertEqual(names, tuple(sorted(set(names))))
-        self.assertEqual(len(names), 10)
+        self.assertEqual(len(names), 16)
         for scenario_id in ("normal_high_quality",) + P1B_SCENARIOS:
             self.assertIn(scenario_id, names)
-        for deferred in (
-            "frame_loss",
-            "timestamp_regression",
-            "sensor_disconnection",
-            "abort",
-            "device_fault",
-            "raw_persistence_failure",
-            "retry_improves",
-            "retry_still_fails",
-        ):
+        # Multi-attempt plans are not single-attempt scenarios.
+        for deferred in ("retry_improves", "retry_still_fails"):
             self.assertNotIn(deferred, names)
 
     def test_normal_p1a_regression_fingerprint(self):

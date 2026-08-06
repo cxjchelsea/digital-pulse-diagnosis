@@ -21,7 +21,7 @@ class M1SimulatorConfigTests(unittest.TestCase):
         self.assertEqual(config.parameter_status.value, "pending_h1_calibration")
         self.assertEqual(config.simulator_version, "0.1.0-p1a")
         self.assertIn("normal_high_quality", list_scenarios())
-        self.assertEqual(len(list_scenarios()), 10)
+        self.assertEqual(len(list_scenarios()), 16)
 
     def test_invalid_duration_and_sample_rate(self):
         with self.assertRaisesRegex(M1SimulatorConfigError, "duration"):
@@ -39,7 +39,7 @@ class M1SimulatorConfigTests(unittest.TestCase):
 
     def test_unknown_scenario_fails_at_registry_not_config_format(self):
         with self.assertRaisesRegex(M1SimulatorConfigError, "unknown scenario"):
-            get_scenario("frame_loss")
+            get_scenario("not_a_real_scenario")
         # Config validate is format-only; existence is registry-owned.
         ScenarioConfig(
             scenario_id="research_custom_id",
