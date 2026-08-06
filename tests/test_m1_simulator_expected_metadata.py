@@ -37,6 +37,8 @@ class M1SimulatorExpectedMetadataTests(unittest.TestCase):
         with self.assertRaisesRegex(M1SimulatorConfigError, "reserved"):
             validate_expected_metadata(QualityLabel.ACCEPTABLE, DecisionAction.HOLD)
         with self.assertRaisesRegex(M1SimulatorConfigError, "reserved"):
+            validate_expected_metadata(QualityLabel.ACCEPTABLE, DecisionAction.CONTINUE_SCAN)
+        with self.assertRaisesRegex(M1SimulatorConfigError, "invalid decision"):
             validate_expected_metadata(QualityLabel.ACCEPTABLE, "continue")
         with self.assertRaisesRegex(M1SimulatorConfigError, "invalid decision"):
             validate_expected_metadata(QualityLabel.ACCEPTABLE, "not_an_action")
