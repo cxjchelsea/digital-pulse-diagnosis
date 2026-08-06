@@ -44,6 +44,20 @@ jobs:
           assert len(d.get('traceability_D3_T01_T24') or []) == 24;
           assert all(item.get('passed') for item in d['traceability_D3_T01_T24'])"
 
+      - name: Run and assert M1-P1 formal acceptance
+        run: >
+          python -c "import json, subprocess, sys;
+          out=subprocess.check_output([sys.executable, 'scripts/generate_m1_p1_acceptance.py'], text=True);
+          print(out);
+          d=json.loads(out);
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('total_cases') == 18;
+          assert d.get('single_attempt_cases') == 16;
+          assert d.get('multi_attempt_cases') == 2;
+          assert d.get('replay_verified') is True;
+          assert d.get('golden_summaries_verified') is True;
+          assert d.get('failed_gates') == []"
+
       - name: Upload D3 acceptance artifacts
         uses: actions/upload-artifact@v4
         with:
