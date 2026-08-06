@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from digital_pulse.m1_contracts import DecisionAction, QualityLabel
+
 from .config import (
     M1SimulatorConfigError,
     SIMULATOR_VERSION,
@@ -38,6 +40,25 @@ _COMMON_KEYS = (
     "rr_variation",
 )
 
+# I1 actions allowed in scenario expected metadata. Reserved hold/scan actions are rejected.
+ALLOWED_EXPECTED_ACTIONS = frozenset(
+    {
+        DecisionAction.ACCEPT,
+        DecisionAction.RETRY_SAME_POSITION,
+        DecisionAction.REPOSITION,
+        DecisionAction.MANUAL_REVIEW,
+        DecisionAction.STOP,
+        DecisionAction.ABORT_AND_RELEASE,
+    }
+)
+RESERVED_EXPECTED_ACTIONS = frozenset(
+    {
+        DecisionAction.HOLD,
+        DecisionAction.ADJUST_PRESSURE,
+        DecisionAction.CONTINUE_SCAN,
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ScenarioDefinition:
@@ -46,11 +67,39 @@ class ScenarioDefinition:
     description: str
     builder: ScenarioBuilder
     fault_kinds: tuple[FaultKind, ...]
-    expected_quality_label: str
+    expected_quality_label: QualityLabel
     expected_reason_codes: tuple[str, ...]
-    expected_int_action: str
+    expected_int_action: DecisionAction
     analysis_allowed: bool
     expected_completion: bool
+
+    def __post_init__(self) -> None:
+        validate_expected_metadata(self.expected_quality_label, self.expected_int_action)
+
+
+def validate_expected_metadata(
+    quality: QualityLabel | str,
+    action: DecisionAction | str,
+) -> tuple[QualityLabel, DecisionAction]:
+    try:
+        quality_label = quality if isinstance(quality, QualityLabel) else QualityLabel(quality)
+    except ValueError as exc:
+        raise M1SimulatorConfigError("invalid_expected_quality", f"invalid quality label: {quality}") from exc
+    try:
+        int_action = action if isinstance(action, DecisionAction) else DecisionAction(action)
+    except ValueError as exc:
+        raise M1SimulatorConfigError("invalid_expected_action", f"invalid decision action: {action}") from exc
+    if int_action in RESERVED_EXPECTED_ACTIONS:
+        raise M1SimulatorConfigError(
+            "reserved_expected_action",
+            f"reserved decision action is not allowed in scenario metadata: {int_action.value}",
+        )
+    if int_action not in ALLOWED_EXPECTED_ACTIONS:
+        raise M1SimulatorConfigError(
+            "invalid_expected_action",
+            f"decision action is not an allowed I1 action: {int_action.value}",
+        )
+    return quality_label, int_action
 
 
 def _common(**overrides: Any) -> dict[str, Any]:
@@ -285,23 +334,24 @@ def _definition(
     description: str,
     builder: ScenarioBuilder,
     fault_kinds: tuple[FaultKind, ...],
-    expected_quality_label: str,
+    expected_quality_label: QualityLabel | str,
     expected_reason_codes: tuple[str, ...],
-    expected_int_action: str,
+    expected_int_action: DecisionAction | str,
     *,
     analysis_allowed: bool = False,
     expected_completion: bool = True,
     scenario_version: str = "1.0.0",
 ) -> ScenarioDefinition:
+    quality, action = validate_expected_metadata(expected_quality_label, expected_int_action)
     return ScenarioDefinition(
         scenario_id=scenario_id,
         scenario_version=scenario_version,
         description=description,
         builder=builder,
         fault_kinds=fault_kinds,
-        expected_quality_label=expected_quality_label,
+        expected_quality_label=quality,
         expected_reason_codes=expected_reason_codes,
-        expected_int_action=expected_int_action,
+        expected_int_action=action,
         analysis_allowed=analysis_allowed,
         expected_completion=expected_completion,
     )
@@ -313,9 +363,9 @@ SCENARIO_DEFINITIONS: dict[str, ScenarioDefinition] = {
         "Deterministic high-quality multichannel baseline (P1A).",
         build_normal_high_quality,
         (),
-        "high_quality",
+        QualityLabel.ACCEPTABLE,
         (),
-        "continue",
+        DecisionAction.ACCEPT,
         analysis_allowed=True,
         expected_completion=True,
     ),
@@ -324,81 +374,81 @@ SCENARIO_DEFINITIONS: dict[str, ScenarioDefinition] = {
         "Reduced pulse amplitude with preserved beat timing (synthetic scale).",
         build_weak_signal,
         (FaultKind.WEAK_SIGNAL,),
-        "weak_signal",
+        QualityLabel.WEAK_SIGNAL,
         ("LOW_PULSE_AMPLITUDE",),
-        "retry_same_position",
+        DecisionAction.RETRY_SAME_POSITION,
     ),
     NO_CONTACT: _definition(
         NO_CONTACT,
         "Probe not in mechanical contact; sensors remain connected.",
         build_no_contact,
         (FaultKind.NO_CONTACT,),
-        "no_contact",
+        QualityLabel.NO_CONTACT,
         ("NO_PROBE_CONTACT",),
-        "reposition",
+        DecisionAction.REPOSITION,
     ),
     UPPER_SATURATION: _definition(
         UPPER_SATURATION,
         "Pulse clipped at synthetic upper limit inside a fault window.",
         build_upper_saturation,
         (FaultKind.UPPER_SATURATION,),
-        "saturated",
+        QualityLabel.SATURATED,
         ("UPPER_SATURATION",),
-        "stop",
+        DecisionAction.STOP,
     ),
     LOWER_SATURATION: _definition(
         LOWER_SATURATION,
         "Pulse clipped at synthetic lower limit inside a fault window.",
         build_lower_saturation,
         (FaultKind.LOWER_SATURATION,),
-        "saturated",
+        QualityLabel.SATURATED,
         ("LOWER_SATURATION",),
-        "stop",
+        DecisionAction.STOP,
     ),
     BASELINE_DRIFT: _definition(
         BASELINE_DRIFT,
         "Smooth deterministic pulse baseline drift without phase change.",
         build_baseline_drift,
         (FaultKind.BASELINE_DRIFT,),
-        "unstable_baseline",
+        QualityLabel.UNSTABLE_BASELINE,
         ("BASELINE_DRIFT",),
-        "retry_same_position",
+        DecisionAction.RETRY_SAME_POSITION,
     ),
     MOTION_ARTIFACT: _definition(
         MOTION_ARTIFACT,
         "Bounded motion disturbance on pulse and load inside a window.",
         build_motion_artifact,
         (FaultKind.MOTION_ARTIFACT,),
-        "motion_artifact",
+        QualityLabel.MOTION_ARTIFACT,
         ("MOTION_ARTIFACT",),
-        "retry_same_position",
+        DecisionAction.RETRY_SAME_POSITION,
     ),
     UNSTABLE_LOAD: _definition(
         UNSTABLE_LOAD,
         "Significant deterministic load oscillation with optional pulse coupling.",
         build_unstable_load,
         (FaultKind.UNSTABLE_LOAD,),
-        "manual_review_required",
+        QualityLabel.MANUAL_REVIEW_REQUIRED,
         ("UNSTABLE_CONTACT_LOAD",),
-        "manual_review",
+        DecisionAction.MANUAL_REVIEW,
     ),
     PPG_MISALIGNMENT: _definition(
         PPG_MISALIGNMENT,
         "Shared BeatTimeline with abnormal effective PPG observation delay.",
         build_ppg_misalignment,
         (FaultKind.PPG_MISALIGNMENT,),
-        "reference_mismatch",
+        QualityLabel.REFERENCE_MISMATCH,
         ("PPG_ALIGNMENT_MISMATCH",),
-        "manual_review",
+        DecisionAction.MANUAL_REVIEW,
     ),
     INSUFFICIENT_DURATION: _definition(
         INSUFFICIENT_DURATION,
         "Normal channels with intentionally short synthetic session duration.",
         build_insufficient_duration,
         (),
-        "insufficient_duration",
+        QualityLabel.INSUFFICIENT_DURATION,
         ("INSUFFICIENT_VALID_DURATION",),
-        "retry_same_position",
+        DecisionAction.RETRY_SAME_POSITION,
     ),
 }
 
