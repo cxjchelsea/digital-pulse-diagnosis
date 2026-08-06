@@ -74,8 +74,9 @@ class PPGChannel:
         self._rng = rng
         self._delay_s = float(delay_ms) / 1000.0
 
-    def sample(self, tick: ClockTick) -> RawChannel:
-        delayed_time = max(0.0, tick.elapsed_time_s - self._delay_s)
+    def sample(self, tick: ClockTick, *, delay_ms: float | None = None) -> RawChannel:
+        delay_s = self._delay_s if delay_ms is None else float(delay_ms) / 1000.0
+        delayed_time = max(0.0, tick.elapsed_time_s - delay_s)
         event, phase = self._timeline.phase_at(delayed_time)
         wave = _ppg_template(phase) * event.amplitude_scale
         noise = float(self._rng.normal(0.0, self._config.noise_std_raw))

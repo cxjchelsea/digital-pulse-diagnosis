@@ -24,17 +24,23 @@ class SimulatorRNG:
     pulse_rng: np.random.Generator
     load_rng: np.random.Generator
     ppg_rng: np.random.Generator
+    artifact_rng: np.random.Generator
 
 
 def derive_rng_streams(root_seed: int) -> SimulatorRNG:
-    """Derive independent RNG streams so channel noise cannot reorder beat timing."""
+    """Derive independent RNG streams so channel noise cannot reorder beat timing.
+
+    The first four streams remain identical to P1A ``spawn(4)`` children. The
+    fifth stream is reserved for P1B artifact/fault detail noise.
+    """
     sequence = np.random.SeedSequence(_stable_seed_bytes(root_seed))
-    beat, pulse, load, ppg = sequence.spawn(4)
+    beat, pulse, load, ppg, artifact = sequence.spawn(5)
     return SimulatorRNG(
         beat_rng=np.random.default_rng(beat),
         pulse_rng=np.random.default_rng(pulse),
         load_rng=np.random.default_rng(load),
         ppg_rng=np.random.default_rng(ppg),
+        artifact_rng=np.random.default_rng(artifact),
     )
 
 

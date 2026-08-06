@@ -12,9 +12,11 @@ from typing import Any, Mapping
 
 from digital_pulse.m1_contracts import ParameterStatus
 
+from .scenario_ids import NORMAL_HIGH_QUALITY
 
-SIMULATOR_VERSION = "0.1.0-p1a"
-NORMAL_HIGH_QUALITY = "normal_high_quality"
+
+SIMULATOR_VERSION = "0.2.0-p1b"
+P1A_COMPAT_SIMULATOR_VERSION = "0.1.0-p1a"
 MAX_SAMPLE_RATE_HZ = 2000.0
 MAX_DURATION_S = 600.0
 MAX_SAMPLES = 300_000
@@ -64,11 +66,13 @@ class ScenarioConfig:
     parameter_status: ParameterStatus = ParameterStatus.PENDING_H1_CALIBRATION
     rr_variation: float = 0.02
     initial_frame_sequence: int = 0
+    fault_schedule: tuple[Any, ...] = ()
 
     def validate(self) -> None:
-        # P1A hard-gates allowed IDs here; the registry remains the sole construction entry.
-        if self.scenario_id != NORMAL_HIGH_QUALITY:
-            raise M1SimulatorConfigError("unknown_scenario", f"unknown scenario_id: {self.scenario_id}")
+        # Existence of scenario_id is enforced by the registry (get_scenario).
+        # Config validation only checks field legality to avoid import cycles.
+        if not isinstance(self.scenario_id, str) or not self.scenario_id:
+            raise M1SimulatorConfigError("missing_scenario", "scenario_id is required")
         if not self.scenario_version:
             raise M1SimulatorConfigError("missing_version", "scenario_version is required")
         if not self.simulator_version:
@@ -117,7 +121,7 @@ class ScenarioConfig:
         if status != ParameterStatus.PENDING_H1_CALIBRATION.value:
             raise M1SimulatorConfigError(
                 "invalid_parameter_status",
-                "P1A requires parameter_status=pending_h1_calibration",
+                "simulator configs require parameter_status=pending_h1_calibration",
             )
         for name, channel in (
             ("pulse_channel_config", self.pulse_channel_config),
@@ -126,9 +130,19 @@ class ScenarioConfig:
         ):
             if not is_dataclass(channel):
                 raise M1SimulatorConfigError("invalid_channel_config", f"{name} must be a dataclass")
+        if not isinstance(self.fault_schedule, tuple):
+            raise M1SimulatorConfigError("invalid_fault_schedule", "fault_schedule must be a tuple")
+        if self.fault_schedule:
+            from .faults import validate_fault_schedule
+
+            validate_fault_schedule(self.fault_schedule, duration_s=self.duration_s)
 
     def canonical(self) -> dict[str, Any]:
-        return _canonical(self)
+        data = _canonical(self)
+        # Omit empty fault schedules so P1A-compatible normal configs keep stable digests.
+        if not data.get("fault_schedule"):
+            data.pop("fault_schedule", None)
+        return data
 
     def configuration_digest(self) -> str:
         payload = json.dumps(self.canonical(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -179,12 +193,13 @@ def build_normal_high_quality(
     started_at_utc: str = "2026-08-06T07:00:00Z",
     heart_rate_bpm: float = 72.0,
     ppg_delay_ms: float = 40.0,
-    simulator_version: str = SIMULATOR_VERSION,
+    simulator_version: str = P1A_COMPAT_SIMULATOR_VERSION,
     scenario_version: str = "1.0.0",
     pulse_channel_config: PulseChannelConfig | None = None,
     load_channel_config: LoadChannelConfig | None = None,
     ppg_channel_config: PPGChannelConfig | None = None,
     rr_variation: float = 0.02,
+    fault_schedule: tuple[Any, ...] = (),
 ) -> ScenarioConfig:
     config = ScenarioConfig(
         scenario_id=NORMAL_HIGH_QUALITY,
@@ -202,6 +217,7 @@ def build_normal_high_quality(
         parameter_status=ParameterStatus.PENDING_H1_CALIBRATION,
         rr_variation=float(rr_variation),
         initial_frame_sequence=0,
+        fault_schedule=tuple(fault_schedule),
     )
     config.validate()
     return config
