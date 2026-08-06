@@ -213,12 +213,39 @@ def load_schema(name: str) -> dict[str, Any]:
     return json.loads(schema_path(name).read_text(encoding="utf-8"))
 
 
+def _strict_date_time(value: str) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
+
+
+def _format_checker():
+    from jsonschema import FormatChecker
+
+    checker = FormatChecker()
+
+    @checker.checks("date-time", raises=ValueError)
+    def check_date_time(value: object) -> bool:
+        if value is None:
+            return True
+        if not isinstance(value, str) or not _strict_date_time(value):
+            raise ValueError("must be an ISO-8601 date-time with timezone")
+        return True
+
+    return checker
+
+
 def validate_json_schema(instance: Mapping[str, Any], schema_name: str) -> None:
     try:
-        from jsonschema import Draft202012Validator, FormatChecker
+        from jsonschema import Draft202012Validator
     except ImportError as exc:  # pragma: no cover - exercised in CI after dependency install
         raise M1ContractError("missing_dependency", "jsonschema is required for schema validation") from exc
-    validator = Draft202012Validator(load_schema(schema_name), format_checker=FormatChecker())
+    validator = Draft202012Validator(load_schema(schema_name), format_checker=_format_checker())
     errors = sorted(validator.iter_errors(dict(instance)), key=lambda item: list(item.path))
     if errors:
         first = errors[0]
