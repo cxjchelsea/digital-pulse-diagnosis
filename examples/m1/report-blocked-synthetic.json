@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "rep-0002",
+  "session_id": "m1p0-sim-retry-001",
+  "source_type": "simulator",
+  "report_status": "failed",
+  "analysis_allowed": false,
+  "quality_summary": {
+    "primary_label": "insufficient_duration",
+    "reason_codes": ["too_short", "insufficient_beats"],
+    "window_ids": ["window-0002"]
+  },
+  "integrity_summary": {
+    "frame_count": 2000,
+    "crc_error_count": 0,
+    "missing_frame_count": 0,
+    "timestamp_error_count": 0,
+    "raw_persistence_status": "ok"
+  },
+  "objective_parameters": null,
+  "decision_summary": {
+    "final_action": "retry_same_position",
+    "decision_ids": ["dec-0002"],
+    "reason_codes": ["insufficient_duration"]
+  },
+  "version_manifest": {
+    "protocol_version": 0,
+    "calibration_version": "pending_h1_calibration",
+    "signal_processing_version": "s1-pre-0.0.0",
+    "decision_rule_version": "i1-pre-0.0.0",
+    "software_commit_sha": "d7f45006dee37e89c9790c98a11750eb7848bc82",
+    "configuration_digest": "a40d869fd9ba17bf31ecc5080379cc8a684318db60d73ccd11d4711c5f921255"
+  },
+  "limitations": [
+    "synthetic_input",
+    "pending_h1_calibration",
+    "not_hardware_validated",
+    "not_for_medical_use"
+  ],
+  "generated_at_utc": "2026-08-06T05:02:12Z",
+  "parameter_status": "pending_h1_calibration",
+  "failure_summary": "Formal objective parameters blocked by quality gate; synthetic engineering summary only."
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "m1p0-sim-normal-001",
+  "frame_sequence": 1200,
+  "device_time_us": 4800000,
+  "host_received_at_utc": "2026-08-06T05:00:01Z",
+  "source_type": "simulator",
+  "pulse": {
+    "value": 18432,
+    "status": "connected",
+    "clipping": "none"
+  },
+  "load": {
+    "value": 80000,
+    "status": "connected",
+    "clipping": "none"
+  },
+  "ppg": {
+    "value": 22015,
+    "status": "connected",
+    "clipping": "none"
+  },
+  "target_load_raw": null,
+  "motor_position_raw": null,
+  "device_state": "ACQUIRE",
+  "fault_flags": [],
+  "receive_integrity": {
+    "crc_valid": true,
+    "sequence_valid": true,
+    "timestamp_valid": true
+  },
+  "protocol_version": 0,
+  "firmware_version": "sim-0.1.0",
+  "hardware_version": null,
+  "calibration_version": "pending_h1_calibration"
+}

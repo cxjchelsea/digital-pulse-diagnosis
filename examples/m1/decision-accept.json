@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "decision_id": "dec-0001",
+  "session_id": "m1p0-sim-normal-001",
+  "decided_at_utc": "2026-08-06T05:01:02Z",
+  "milestone": "M1",
+  "int_level": "I1",
+  "device_state": "ACQUIRE",
+  "quality_reference": {
+    "session_id": "m1p0-sim-normal-001",
+    "window_id": "window-0001"
+  },
+  "action": "accept",
+  "reason_codes": ["quality_acceptable"],
+  "rule_version": "i1-pre-0.0.0",
+  "input_versions": {
+    "signal_processing_version": "s1-pre-0.0.0",
+    "decision_rule_version": "i1-pre-0.0.0",
+    "configuration_digest": "a40d869fd9ba17bf31ecc5080379cc8a684318db60d73ccd11d4711c5f921255"
+  },
+  "retry_count": 0,
+  "max_retry_count": 3,
+  "operator_override": null,
+  "outcome": "applied",
+  "parameter_status": "pending_h1_calibration"
+}

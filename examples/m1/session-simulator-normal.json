@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "m1p0-sim-normal-001",
+  "source_type": "simulator",
+  "started_at_utc": "2026-08-06T05:00:00Z",
+  "ended_at_utc": "2026-08-06T05:01:00Z",
+  "completed": true,
+  "completion_reason": "accepted",
+  "device_id": null,
+  "hardware_version": null,
+  "firmware_version": "sim-0.1.0",
+  "protocol_version": 0,
+  "simulator_version": "m1-p1-pending-0.0.0",
+  "scenario_id": "simulator-normal",
+  "random_seed": 20260806,
+  "sample_rate_hz": 250,
+  "configured_channels": ["pulse", "load", "ppg"],
+  "operator_id": "op-demo",
+  "subject_id": "anon-0001",
+  "side": "left",
+  "site": "radial",
+  "probe_id": null,
+  "sensor_ids": {
+    "pulse": null,
+    "load": null,
+    "ppg": null
+  },
+  "versions": {
+    "calibration_version": "pending_h1_calibration",
+    "signal_processing_version": "s1-pre-0.0.0",
+    "decision_rule_version": "i1-pre-0.0.0",
+    "software_commit_sha": "d7f45006dee37e89c9790c98a11750eb7848bc82",
+    "configuration_digest": "a40d869fd9ba17bf31ecc5080379cc8a684318db60d73ccd11d4711c5f921255"
+  },
+  "integrity_summary": {
+    "frame_count": 15000,
+    "crc_error_count": 0,
+    "missing_frame_count": 0,
+    "timestamp_error_count": 0,
+    "dropped_sample_count": 0,
+    "raw_persistence_status": "ok"
+  },
+  "files": [
+    {"role": "manifest", "relative_path": "manifest.json"},
+    {"role": "raw_frames", "relative_path": "raw_frames.bin"},
+    {"role": "events", "relative_path": "events.jsonl"},
+    {"role": "quality", "relative_path": "processed/quality.jsonl"},
+    {"role": "decisions", "relative_path": "processed/decisions.jsonl"},
+    {"role": "report", "relative_path": "report.json"}
+  ],
+  "parameter_status": "pending_h1_calibration",
+  "limitations": [
+    "synthetic_input",
+    "pending_h1_calibration",
+    "not_hardware_validated",
+    "not_for_medical_use"
+  ]
+}

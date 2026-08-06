@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-decision.schema.json",
+  "title": "M1 Decision",
+  "description": "Auditable adaptive acquisition decision. I1 actions are the only actions usable in M1-P/I1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "session_id",
+    "decided_at_utc",
+    "milestone",
+    "int_level",
+    "device_state",
+    "quality_reference",
+    "action",
+    "reason_codes",
+    "rule_version",
+    "input_versions",
+    "retry_count",
+    "max_retry_count",
+    "operator_override",
+    "outcome",
+    "parameter_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "decided_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "milestone": {
+      "type": "string",
+      "enum": ["M1", "M2", "M3", "M4", "M5", "M6"]
+    },
+    "int_level": {
+      "type": "string",
+      "enum": ["I0", "I1", "I2", "I3", "I4", "I5"]
+    },
+    "device_state": {
+      "type": "string",
+      "enum": [
+        "BOOT",
+        "SELF_TEST",
+        "IDLE",
+        "APPROACH",
+        "CONTACT",
+        "STABILIZE",
+        "ACQUIRE",
+        "STEP",
+        "RETRACT",
+        "FAULT",
+        "SAFE_HOLD"
+      ]
+    },
+    "quality_reference": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["session_id", "window_id"],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "window_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "retry_same_position",
+        "reposition",
+        "manual_review",
+        "stop",
+        "abort_and_release",
+        "hold",
+        "adjust_pressure",
+        "continue_scan"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "quality_acceptable",
+          "weak_signal",
+          "no_contact",
+          "saturated",
+          "unstable_baseline",
+          "motion_artifact",
+          "insufficient_duration",
+          "data_integrity_failure",
+          "reference_mismatch",
+          "retry_limit_reached",
+          "operator_stop",
+          "operator_override",
+          "device_fault",
+          "emergency_stop",
+          "hard_overload",
+          "host_timeout",
+          "watchdog_timeout",
+          "manual_review_required",
+          "reserved_future_action"
+        ]
+      }
+    },
+    "rule_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "input_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signal_processing_version",
+        "decision_rule_version",
+        "configuration_digest"
+      ],
+      "properties": {
+        "signal_processing_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "decision_rule_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "configuration_digest": {
+          "type": ["string", "null"],
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_retry_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "operator_override": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["operator_id", "note"],
+      "properties": {
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "outcome": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "applied",
+        "superseded",
+        "rejected_by_safety",
+        "awaiting_operator",
+        "completed"
+      ]
+    },
+    "parameter_status": {
+      "type": "string",
+      "enum": [
+        "pending_h1_calibration",
+        "synthetic_only",
+        "candidate",
+        "frozen"
+      ]
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "m1p0-sim-retry-001",
+  "window_id": "window-0002",
+  "start_device_time_us": 1000000,
+  "end_device_time_us": 2500000,
+  "label": "insufficient_duration",
+  "score": 0.28,
+  "confidence": null,
+  "reason_codes": ["too_short", "insufficient_beats"],
+  "metrics": {
+    "valid_fraction": 0.4,
+    "clipping_fraction": 0.0,
+    "baseline_drift_raw": 5.0,
+    "pulse_std_raw": 90.0,
+    "beat_count": 1,
+    "ppg_match_rate": null
+  },
+  "valid_duration_s": 8.0,
+  "processing_version": "s1-pre-0.0.0",
+  "parameter_version": "quality-params-pending-h1",
+  "parameter_status": "pending_h1_calibration"
+}
