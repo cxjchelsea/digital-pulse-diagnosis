@@ -31,9 +31,9 @@ flowchart LR
 
 ```text
 M1-P真实接入前软件就绪（主要实施）
-├─ M1-P0 数据契约与Schema
-├─ M1-P1 多通道真实风格模拟器
-├─ M1-P2 SP-S1-pre信号处理
+├─ M1-P0 数据契约与Schema（已完成）
+├─ M1-P1 多通道真实风格模拟器（实现完成，待PR审查/合并）
+├─ M1-P2 SP-S1-pre信号处理（未开始）
 ├─ M1-P3 APP-A1-pre分析软件
 ├─ M1-P4 INT-I1-pre决策规则
 ├─ M1-P5 模拟场景与验收矩阵
@@ -42,6 +42,8 @@ M1-P真实接入前软件就绪（主要实施）
 H1-A采购调研（并行）
 └─ 型号、供应商、价格、交期、原理图、验证假设和备选方案
 ```
+
+M1-P1当前包含：18个模拟案例、正式会话输出、Replay、CLI与综合验收。仍为合成数据；真实阈值待H1校准。M1-P1完成不等于M1-P、H1或M1完成。
 
 默认顺序：
 
@@ -114,6 +116,8 @@ pip install -e ".[dev]"
 python -m pytest -q
 python -m unittest discover -s tests -v
 python scripts/generate_d3_acceptance.py
+python scripts/generate_m1_p1_acceptance.py
+python -m digital_pulse.m1_simulator list
 pulse-simulator --output simulated-session.bin --forces 40 80 120
 pulse-api
 ```
