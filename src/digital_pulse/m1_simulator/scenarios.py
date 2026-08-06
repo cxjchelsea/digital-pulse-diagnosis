@@ -10,23 +10,33 @@ from digital_pulse.m1_contracts import DecisionAction, QualityLabel
 
 from .config import (
     M1SimulatorConfigError,
+    P1B_COMPAT_SIMULATOR_VERSION,
     SIMULATOR_VERSION,
     ScenarioConfig,
     build_normal_high_quality,
+    sample_count,
 )
+from .device_faults import DeviceFaultKind, DeviceFaultPlan
 from .faults import FaultKind, default_fault_window
 from .scenario_ids import (
+    ABORT,
     BASELINE_DRIFT,
+    DEVICE_FAULT,
+    FRAME_LOSS,
     INSUFFICIENT_DURATION,
     LOWER_SATURATION,
     MOTION_ARTIFACT,
     NO_CONTACT,
     NORMAL_HIGH_QUALITY,
     PPG_MISALIGNMENT,
+    RAW_PERSISTENCE_FAILURE,
+    SENSOR_DISCONNECTION,
+    TIMESTAMP_REGRESSION,
     UNSTABLE_LOAD,
     UPPER_SATURATION,
     WEAK_SIGNAL,
 )
+from .transport import FrameLossPlan, TimestampRegressionPlan
 
 ScenarioBuilder = Callable[..., ScenarioConfig]
 
@@ -111,7 +121,8 @@ def _common(**overrides: Any) -> dict[str, Any]:
         "heart_rate_bpm": 72.0,
         "ppg_delay_ms": 40.0,
         "rr_variation": 0.02,
-        "simulator_version": SIMULATOR_VERSION,
+        # P1B builders keep 0.2.0-p1b so global P1C version bumps do not rewrite digests.
+        "simulator_version": P1B_COMPAT_SIMULATOR_VERSION,
         "scenario_version": "1.0.0",
     }
     values.update(overrides)
@@ -151,9 +162,18 @@ def _with_scenario_id(config: ScenarioConfig, scenario_id: str) -> ScenarioConfi
         rr_variation=config.rr_variation,
         initial_frame_sequence=config.initial_frame_sequence,
         fault_schedule=config.fault_schedule,
+        transport_fault_schedule=config.transport_fault_schedule,
+        device_fault_schedule=config.device_fault_schedule,
+        persistence_fault_plan=config.persistence_fault_plan,
     )
     rebuilt.validate()
     return rebuilt
+
+
+def _pop_p1c_common(overrides: dict[str, Any]) -> dict[str, Any]:
+    common = _pop_common(overrides)
+    common["simulator_version"] = str(overrides.pop("simulator_version", SIMULATOR_VERSION))
+    return common
 
 
 def build_weak_signal(**overrides: Any) -> ScenarioConfig:
@@ -329,6 +349,111 @@ def build_insufficient_duration(**overrides: Any) -> ScenarioConfig:
     return _with_scenario_id(base, INSUFFICIENT_DURATION)
 
 
+def build_frame_loss(**overrides: Any) -> ScenarioConfig:
+    common = _pop_p1c_common(overrides)
+    total = sample_count(common["duration_s"], common["sample_rate_hz"])
+    start = int(overrides.pop("start_frame_sequence", total // 2))
+    lost = int(overrides.pop("lost_frame_count", 3))
+    if "transport_fault_schedule" in overrides:
+        schedule = overrides.pop("transport_fault_schedule")
+    else:
+        schedule = (FrameLossPlan(start_frame_sequence=start, lost_frame_count=lost),)
+    base = build_normal_high_quality(**common, transport_fault_schedule=schedule, **overrides)
+    return _with_scenario_id(base, FRAME_LOSS)
+
+
+def build_timestamp_regression(**overrides: Any) -> ScenarioConfig:
+    common = _pop_p1c_common(overrides)
+    total = sample_count(common["duration_s"], common["sample_rate_hz"])
+    frame = int(overrides.pop("frame_sequence", total // 2))
+    regression_us = int(overrides.pop("regression_us", 2500))
+    if "transport_fault_schedule" in overrides:
+        schedule = overrides.pop("transport_fault_schedule")
+    else:
+        schedule = (TimestampRegressionPlan(frame_sequence=frame, regression_us=regression_us),)
+    base = build_normal_high_quality(**common, transport_fault_schedule=schedule, **overrides)
+    return _with_scenario_id(base, TIMESTAMP_REGRESSION)
+
+
+def build_sensor_disconnection(**overrides: Any) -> ScenarioConfig:
+    common = _pop_p1c_common(overrides)
+    total = sample_count(common["duration_s"], common["sample_rate_hz"])
+    trigger = int(overrides.pop("trigger_frame_sequence", total // 2))
+    if "device_fault_schedule" in overrides:
+        schedule = overrides.pop("device_fault_schedule")
+    else:
+        schedule = (
+            DeviceFaultPlan(
+                kind=DeviceFaultKind.SENSOR_DISCONNECTION,
+                trigger_frame_sequence=trigger,
+                affected_channels=("pulse",),
+                terminal_device_state="FAULT",
+                fault_flags=("sensor_disconnected",),
+                terminate_after_trigger=True,
+            ),
+        )
+    base = build_normal_high_quality(**common, device_fault_schedule=schedule, **overrides)
+    return _with_scenario_id(base, SENSOR_DISCONNECTION)
+
+
+def build_abort(**overrides: Any) -> ScenarioConfig:
+    common = _pop_p1c_common(overrides)
+    total = sample_count(common["duration_s"], common["sample_rate_hz"])
+    trigger = int(overrides.pop("trigger_frame_sequence", total // 2))
+    if "device_fault_schedule" in overrides:
+        schedule = overrides.pop("device_fault_schedule")
+    else:
+        schedule = (
+            DeviceFaultPlan(
+                kind=DeviceFaultKind.ABORT,
+                trigger_frame_sequence=trigger,
+                affected_channels=(),
+                terminal_device_state="SAFE_HOLD",
+                fault_flags=("emergency_stop",),
+                terminate_after_trigger=True,
+            ),
+        )
+    base = build_normal_high_quality(**common, device_fault_schedule=schedule, **overrides)
+    return _with_scenario_id(base, ABORT)
+
+
+def build_device_fault(**overrides: Any) -> ScenarioConfig:
+    common = _pop_p1c_common(overrides)
+    total = sample_count(common["duration_s"], common["sample_rate_hz"])
+    trigger = int(overrides.pop("trigger_frame_sequence", total // 2))
+    flag = str(overrides.pop("fault_flag", "buffer_overflow"))
+    if "device_fault_schedule" in overrides:
+        schedule = overrides.pop("device_fault_schedule")
+    else:
+        schedule = (
+            DeviceFaultPlan(
+                kind=DeviceFaultKind.DEVICE_FAULT,
+                trigger_frame_sequence=trigger,
+                affected_channels=(),
+                terminal_device_state="FAULT",
+                fault_flags=(flag,),
+                terminate_after_trigger=True,
+            ),
+        )
+    base = build_normal_high_quality(**common, device_fault_schedule=schedule, **overrides)
+    return _with_scenario_id(base, DEVICE_FAULT)
+
+
+def build_raw_persistence_failure(**overrides: Any) -> ScenarioConfig:
+    from .capture import PersistenceFaultPlan
+
+    if "duration_s" not in overrides:
+        overrides["duration_s"] = 2.0
+    common = _pop_p1c_common(overrides)
+    fail_after = int(overrides.pop("fail_after_persisted_count", 25))
+    if "persistence_fault_plan" in overrides:
+        plan = overrides.pop("persistence_fault_plan")
+    else:
+        plan = PersistenceFaultPlan(fail_after_persisted_count=fail_after)
+    base = build_normal_high_quality(**common, persistence_fault_plan=plan, **overrides)
+    return _with_scenario_id(base, RAW_PERSISTENCE_FAILURE)
+
+
 def _definition(
     scenario_id: str,
     description: str,
@@ -450,6 +575,66 @@ SCENARIO_DEFINITIONS: dict[str, ScenarioDefinition] = {
         ("INSUFFICIENT_VALID_DURATION",),
         DecisionAction.RETRY_SAME_POSITION,
     ),
+    FRAME_LOSS: _definition(
+        FRAME_LOSS,
+        "Transport drops contiguous frames; first post-gap sample has sequence_valid=false.",
+        build_frame_loss,
+        (),
+        QualityLabel.DATA_INTEGRITY_FAILURE,
+        ("FRAME_SEQUENCE_GAP",),
+        DecisionAction.STOP,
+        expected_completion=False,
+    ),
+    TIMESTAMP_REGRESSION: _definition(
+        TIMESTAMP_REGRESSION,
+        "Continuous frames with a single device-time regression.",
+        build_timestamp_regression,
+        (),
+        QualityLabel.DATA_INTEGRITY_FAILURE,
+        ("TIMESTAMP_REGRESSION",),
+        DecisionAction.STOP,
+        expected_completion=False,
+    ),
+    SENSOR_DISCONNECTION: _definition(
+        SENSOR_DISCONNECTION,
+        "Pulse sensor disconnects (not no_contact); session ends at trigger frame.",
+        build_sensor_disconnection,
+        (),
+        QualityLabel.DATA_INTEGRITY_FAILURE,
+        ("SENSOR_DISCONNECTED",),
+        DecisionAction.STOP,
+        expected_completion=False,
+    ),
+    ABORT: _definition(
+        ABORT,
+        "Emergency stop enters SAFE_HOLD and ends output.",
+        build_abort,
+        (),
+        QualityLabel.DATA_INTEGRITY_FAILURE,
+        ("EMERGENCY_STOP",),
+        DecisionAction.ABORT_AND_RELEASE,
+        expected_completion=False,
+    ),
+    DEVICE_FAULT: _definition(
+        DEVICE_FAULT,
+        "Generic device FAULT with a schema-legal fault flag, then stop.",
+        build_device_fault,
+        (),
+        QualityLabel.DATA_INTEGRITY_FAILURE,
+        ("DEVICE_FAULT",),
+        DecisionAction.ABORT_AND_RELEASE,
+        expected_completion=False,
+    ),
+    RAW_PERSISTENCE_FAILURE: _definition(
+        RAW_PERSISTENCE_FAILURE,
+        "In-memory persistence harness fails after N successful writes (no disk I/O).",
+        build_raw_persistence_failure,
+        (),
+        QualityLabel.DATA_INTEGRITY_FAILURE,
+        ("RAW_PERSISTENCE_FAILURE",),
+        DecisionAction.STOP,
+        expected_completion=False,
+    ),
 }
 
 # Public registry keeps builder callables so get_scenario(id) remains compatible.
@@ -459,17 +644,42 @@ SCENARIO_REGISTRY: dict[str, ScenarioBuilder] = {
 
 
 def list_scenarios() -> tuple[str, ...]:
+    """Return sorted single-attempt scenario IDs (excludes multi-attempt plans)."""
     return tuple(sorted(SCENARIO_REGISTRY))
+
+
+def list_single_attempt_scenarios() -> tuple[str, ...]:
+    return list_scenarios()
+
+
+def list_simulation_cases() -> tuple[str, ...]:
+    from .attempts import list_attempt_plans
+
+    return tuple(sorted(set(list_scenarios()) | set(list_attempt_plans())))
 
 
 def get_scenario_definition(scenario_id: str) -> ScenarioDefinition:
     try:
         return SCENARIO_DEFINITIONS[scenario_id]
     except KeyError as exc:
+        from .attempts import ATTEMPT_PLAN_DEFINITIONS
+
+        if scenario_id in ATTEMPT_PLAN_DEFINITIONS:
+            raise M1SimulatorConfigError(
+                "multi_attempt_required",
+                f"multi_attempt_required: {scenario_id} is a multi-attempt plan; use get_attempt_plan()",
+            ) from exc
         raise M1SimulatorConfigError("unknown_scenario", f"unknown scenario_id: {scenario_id}") from exc
 
 
 def get_scenario(scenario_id: str, **overrides: Any) -> ScenarioConfig:
+    from .attempts import ATTEMPT_PLAN_DEFINITIONS
+
+    if scenario_id in ATTEMPT_PLAN_DEFINITIONS:
+        raise M1SimulatorConfigError(
+            "multi_attempt_required",
+            f"multi_attempt_required: {scenario_id} is a multi-attempt plan; use get_attempt_plan()",
+        )
     try:
         builder = SCENARIO_REGISTRY[scenario_id]
     except KeyError as exc:

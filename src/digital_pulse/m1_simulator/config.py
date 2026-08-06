@@ -15,8 +15,9 @@ from digital_pulse.m1_contracts import ParameterStatus
 from .scenario_ids import NORMAL_HIGH_QUALITY
 
 
-SIMULATOR_VERSION = "0.2.0-p1b"
+SIMULATOR_VERSION = "0.3.0-p1c"
 P1A_COMPAT_SIMULATOR_VERSION = "0.1.0-p1a"
+P1B_COMPAT_SIMULATOR_VERSION = "0.2.0-p1b"
 MAX_SAMPLE_RATE_HZ = 2000.0
 MAX_DURATION_S = 600.0
 MAX_SAMPLES = 300_000
@@ -67,6 +68,9 @@ class ScenarioConfig:
     rr_variation: float = 0.02
     initial_frame_sequence: int = 0
     fault_schedule: tuple[Any, ...] = ()
+    transport_fault_schedule: tuple[Any, ...] = ()
+    device_fault_schedule: tuple[Any, ...] = ()
+    persistence_fault_plan: Any | None = None
 
     def validate(self) -> None:
         # Existence of scenario_id is enforced by the registry (get_scenario).
@@ -132,16 +136,52 @@ class ScenarioConfig:
                 raise M1SimulatorConfigError("invalid_channel_config", f"{name} must be a dataclass")
         if not isinstance(self.fault_schedule, tuple):
             raise M1SimulatorConfigError("invalid_fault_schedule", "fault_schedule must be a tuple")
+        if not isinstance(self.transport_fault_schedule, tuple):
+            raise M1SimulatorConfigError("invalid_transport", "transport_fault_schedule must be a tuple")
+        if not isinstance(self.device_fault_schedule, tuple):
+            raise M1SimulatorConfigError("invalid_device_fault", "device_fault_schedule must be a tuple")
+        total = sample_count(self.duration_s, self.sample_rate_hz)
         if self.fault_schedule:
             from .faults import validate_fault_schedule
 
             validate_fault_schedule(self.fault_schedule, duration_s=self.duration_s)
+        if self.transport_fault_schedule:
+            from .transport import validate_transport_fault_schedule
+
+            validate_transport_fault_schedule(
+                self.transport_fault_schedule,
+                initial_frame=self.initial_frame_sequence,
+                sample_total=total,
+            )
+        if self.device_fault_schedule:
+            from .device_faults import validate_device_fault_schedule
+
+            validate_device_fault_schedule(
+                self.device_fault_schedule,
+                initial_frame=self.initial_frame_sequence,
+                sample_total=total,
+            )
+        if self.persistence_fault_plan is not None:
+            from .capture import PersistenceFaultPlan
+
+            if not isinstance(self.persistence_fault_plan, PersistenceFaultPlan):
+                raise M1SimulatorConfigError(
+                    "invalid_persistence",
+                    "persistence_fault_plan must be PersistenceFaultPlan or None",
+                )
+            self.persistence_fault_plan.validate()
 
     def canonical(self) -> dict[str, Any]:
         data = _canonical(self)
-        # Omit empty fault schedules so P1A-compatible normal configs keep stable digests.
+        # Omit empty optional schedules so P1A/P1B-compatible digests stay stable.
         if not data.get("fault_schedule"):
             data.pop("fault_schedule", None)
+        if not data.get("transport_fault_schedule"):
+            data.pop("transport_fault_schedule", None)
+        if not data.get("device_fault_schedule"):
+            data.pop("device_fault_schedule", None)
+        if data.get("persistence_fault_plan") is None:
+            data.pop("persistence_fault_plan", None)
         return data
 
     def configuration_digest(self) -> str:
@@ -200,6 +240,9 @@ def build_normal_high_quality(
     ppg_channel_config: PPGChannelConfig | None = None,
     rr_variation: float = 0.02,
     fault_schedule: tuple[Any, ...] = (),
+    transport_fault_schedule: tuple[Any, ...] = (),
+    device_fault_schedule: tuple[Any, ...] = (),
+    persistence_fault_plan: Any | None = None,
 ) -> ScenarioConfig:
     config = ScenarioConfig(
         scenario_id=NORMAL_HIGH_QUALITY,
@@ -218,6 +261,9 @@ def build_normal_high_quality(
         rr_variation=float(rr_variation),
         initial_frame_sequence=0,
         fault_schedule=tuple(fault_schedule),
+        transport_fault_schedule=tuple(transport_fault_schedule),
+        device_fault_schedule=tuple(device_fault_schedule),
+        persistence_fault_plan=persistence_fault_plan,
     )
     config.validate()
     return config
