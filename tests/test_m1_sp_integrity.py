@@ -62,10 +62,13 @@ class M1SPIntegrityTests(unittest.TestCase):
         tmp, _path, session, samples = record_scenario("sensor_disconnection", duration_s=0.5, random_seed=24)
         try:
             result = SPPreprocessor().preprocess(session, samples)
-            self.assertTrue(result.integrity.pre_quality_blocked)
+            # Quality-capable integrity failure — not blocked_before_quality.
+            self.assertFalse(result.integrity.pre_quality_blocked)
+            self.assertFalse(result.integrity.integrity_ok)
             self.assertGreater(result.integrity.sensor_disconnection_count, 0)
             self.assertTrue(any(e.code == "SENSOR_DISCONNECTED" for e in result.integrity.evidence))
-            self.assertIn("sensor_disconnected", result.integrity.blocking_codes)
+            self.assertNotIn("sensor_disconnected", result.integrity.blocking_codes)
+            self.assertNotIn("emergency_stop", result.integrity.blocking_codes)
         finally:
             tmp.cleanup()
 

@@ -30,8 +30,12 @@ from .observations import (
 )
 
 
-TERMINAL_BLOCK_STATES = frozenset({"FAULT", "SAFE_HOLD"})
-TERMINAL_BLOCK_FLAGS = frozenset({"emergency_stop", "sensor_disconnected", "buffer_overflow"})
+# Safety-only terminal conditions. sensor_disconnected is a quality-capable
+# integrity failure (data_integrity_failure), not blocked_before_quality.
+SAFETY_BLOCK_STATES = frozenset({"SAFE_HOLD"})
+SAFETY_BLOCK_FLAGS = frozenset({"emergency_stop", "buffer_overflow"})
+# FAULT without sensor_disconnected maps to generic device_fault (safety block).
+GENERIC_FAULT_STATES = frozenset({"FAULT"})
 
 
 class IntegrityAnalyzer:
@@ -196,7 +200,6 @@ class IntegrityAnalyzer:
                     details={"indices": disconnect_indices},
                 )
             )
-            blocking.append("sensor_disconnected")
 
         if not session.completed:
             evidence.append(
@@ -218,20 +221,34 @@ class IntegrityAnalyzer:
                     observed_value=persistence.value,
                 )
             )
-            blocking.append("persistence_failed")
 
         pre_quality_blocked = False
         first_block_index: int | None = None
         for i in range(n):
             state = normalized.device_state[i]
             flags = set(normalized.fault_flags[i])
-            if state not in TERMINAL_BLOCK_STATES and not (flags & TERMINAL_BLOCK_FLAGS):
+            # Sensor disconnect is handled above as integrity evidence, not safety block.
+            if "sensor_disconnected" in flags:
+                continue
+            safety_hit = (
+                state in SAFETY_BLOCK_STATES
+                or bool(flags & SAFETY_BLOCK_FLAGS)
+                or (state in GENERIC_FAULT_STATES and "sensor_disconnected" not in flags)
+            )
+            if not safety_hit:
+                continue
+            # Disconnect-inferred FAULT (pulse invalid + FAULT, no explicit flag) is
+            # already counted in sensor_disconnection_count; do not safety-block it.
+            if (
+                state in GENERIC_FAULT_STATES
+                and "emergency_stop" not in flags
+                and not (flags & SAFETY_BLOCK_FLAGS)
+                and i in disconnect_indices
+            ):
                 continue
             pre_quality_blocked = True
             if state == "SAFE_HOLD" or "emergency_stop" in flags:
                 block = "emergency_stop"
-            elif "sensor_disconnected" in flags:
-                block = "sensor_disconnected"
             else:
                 block = "device_fault"
             if block not in blocking:
