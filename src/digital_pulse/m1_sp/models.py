@@ -1,4 +1,4 @@
-"""Internal SP-S1-pre models for M1-P2A (not formal M1QualityResult)."""
+"""Internal SP-S1-pre models for M1-P2A/P2B (formal projection uses M1QualityResult)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,13 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from digital_pulse.m1_contracts import RawPersistenceStatus, SourceType
+from digital_pulse.m1_contracts import (
+    M1QualityResult,
+    ParameterStatus,
+    QualityLabel,
+    RawPersistenceStatus,
+    SourceType,
+)
 
 
 class IntegrityConsistency(str, Enum):
@@ -122,3 +128,51 @@ class SPPreprocessResult:
     processing_version: str
     parameter_version: str
     parameter_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class QualityMetricsInternal:
+    valid_fraction: float | None
+    clipping_fraction: float | None
+    baseline_drift_raw: float | None
+    pulse_std_raw: float | None
+
+    lower_clipping_fraction: float | None
+    upper_clipping_fraction: float | None
+
+    load_median_raw: float | None
+    load_std_raw: float | None
+    load_range_raw: float | None
+    load_slope_raw_per_s: float | None
+
+    motion_metric: float | None
+    near_constant_metric: float | None
+
+    valid_sample_count: int
+    total_sample_count: int
+
+    evidence: tuple[ProcessingEvidence, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class QualityEvaluation:
+    primary_label: QualityLabel
+    reason_codes: tuple[str, ...]
+    internal_evidence: tuple[ProcessingEvidence, ...]
+    metrics: QualityMetricsInternal
+
+
+@dataclass(frozen=True, slots=True)
+class SPQualityStageResult:
+    """P2B stage result — not the final P2D SPProcessingResult."""
+
+    preprocessing: SPPreprocessResult
+    processing_status: str
+    quality_results: tuple[M1QualityResult, ...]
+    metrics_by_window: Mapping[str, QualityMetricsInternal]
+    evaluations_by_window: Mapping[str, QualityEvaluation]
+    blocking_codes: tuple[str, ...]
+    processing_version: str
+    parameter_version: str
+    parameter_status: ParameterStatus
+    configuration_digest: str

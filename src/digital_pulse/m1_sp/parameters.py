@@ -1,4 +1,4 @@
-"""SP-S1-pre parameter set, versions, and deterministic digests (P2A)."""
+"""SP-S1-pre parameter set, versions, and deterministic digests (P2A/P2B)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,22 @@ from digital_pulse.m1_contracts import configuration_digest
 
 from .errors import SPError
 
-SP_PROCESSING_VERSION = "0.1.0-p2a"
-SP_PARAMETER_VERSION = "0.1.0-p2a"
+# Explicit stage versions. P2A payload/digest must remain independently constructible.
+SP_PROCESSING_VERSION_P2A = "0.1.0-p2a"
+SP_PARAMETER_VERSION_P2A = "0.1.0-p2a"
+SP_PROCESSING_VERSION_P2B = "0.2.0-p2b"
+SP_PARAMETER_VERSION_P2B = "0.2.0-p2b"
+
+# Compat aliases — existing P2A tests import these names.
+SP_PROCESSING_VERSION = SP_PROCESSING_VERSION_P2A
+SP_PARAMETER_VERSION = SP_PARAMETER_VERSION_P2A
+
+KNOWN_VERSION_PAIRS = frozenset(
+    {
+        (SP_PARAMETER_VERSION_P2A, SP_PROCESSING_VERSION_P2A),
+        (SP_PARAMETER_VERSION_P2B, SP_PROCESSING_VERSION_P2B),
+    }
+)
 
 # Structural defaults: engineering guards, not physiological thresholds.
 DEFAULT_MINIMUM_WINDOW_SAMPLE_COUNT = 8
@@ -38,6 +52,19 @@ PENDING_H1_SLOT_NAMES = (
     "baseline_drift_threshold",
     "motion_threshold",
 )
+
+# Metric formula versions frozen with P2B simulation-only thresholds.
+METRIC_FORMULA_VERSIONS = {
+    "valid_fraction": "valid_fraction:v1",
+    "clipping_fraction": "clipping_fraction:v1",
+    "pulse_std_raw": "pulse_std_raw:v1",
+    "baseline_drift_raw": "baseline_drift_raw:v1",
+    "motion_metric": "motion_metric:v1",
+    "load_variability": "load_variability:v1",
+}
+
+# Characterization seeds (fixed; never random per run).
+P2B_CHARACTERIZATION_SEEDS = (1001, 1002, 1003, 1004, 1005)
 
 
 class SPParameterClass(str, Enum):
@@ -83,10 +110,13 @@ class SPParameterSet:
     parameters: tuple[SPParameter, ...]
 
     def validate(self) -> None:
-        if self.parameter_version != SP_PARAMETER_VERSION:
-            raise SPError("invalid_parameter", "unexpected parameter_version")
-        if self.processing_version != SP_PROCESSING_VERSION:
-            raise SPError("invalid_parameter", "unexpected processing_version")
+        if (self.parameter_version, self.processing_version) not in KNOWN_VERSION_PAIRS:
+            raise SPError(
+                "invalid_parameter",
+                f"unsupported version pair "
+                f"parameter_version={self.parameter_version!r} "
+                f"processing_version={self.processing_version!r}",
+            )
         seen: set[str] = set()
         for param in self.parameters:
             param.validate()
@@ -144,9 +174,8 @@ def _canonical_value(value: Any) -> Any:
     return value
 
 
-def default_p2a_parameter_set() -> SPParameterSet:
-    """P2A structural defaults + pending_h1 slots (null). No frozen_h1."""
-    structural = (
+def _structural_parameters() -> tuple[SPParameter, ...]:
+    return (
         SPParameter(
             name="minimum_window_sample_count",
             value=DEFAULT_MINIMUM_WINDOW_SAMPLE_COUNT,
@@ -176,7 +205,10 @@ def default_p2a_parameter_set() -> SPParameterSet:
             rationale="Non-acquire / terminal device states excluded from stable windows.",
         ),
     )
-    pending = tuple(
+
+
+def _pending_h1_parameters() -> tuple[SPParameter, ...]:
+    return tuple(
         SPParameter(
             name=name,
             value=None,
@@ -186,10 +218,129 @@ def default_p2a_parameter_set() -> SPParameterSet:
         )
         for name in PENDING_H1_SLOT_NAMES
     )
+
+
+def default_p2a_parameter_set() -> SPParameterSet:
+    """P2A structural defaults + pending_h1 slots (null). No frozen_h1."""
     params = SPParameterSet(
-        parameter_version=SP_PARAMETER_VERSION,
-        processing_version=SP_PROCESSING_VERSION,
-        parameters=structural + pending,
+        parameter_version=SP_PARAMETER_VERSION_P2A,
+        processing_version=SP_PROCESSING_VERSION_P2A,
+        parameters=_structural_parameters() + _pending_h1_parameters(),
+    )
+    params.validate()
+    return params
+
+
+def default_p2b_parameter_set() -> SPParameterSet:
+    """P2B: P2A structural/pending slots + simulation-only quality thresholds.
+
+    Thresholds frozen from multi-seed characterization (seeds 1001-1005).
+    """
+    simulation = (
+        SPParameter(
+            name="baseline_segment_fraction",
+            value=0.2,
+            unit="fraction",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Fraction of valid samples per baseline segment; characterization fixture.",
+        ),
+        SPParameter(
+            name="baseline_minimum_segment_samples",
+            value=8,
+            unit="samples",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Minimum samples per baseline segment for median excursion.",
+        ),
+        SPParameter(
+            name="no_contact_load_max_raw",
+            value=50000.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "load_median_raw <= 50000 → contact-absent zone. "
+                "normal≈80000; no_contact≈40040 (seeds 1001-1005)."
+            ),
+        ),
+        SPParameter(
+            name="near_constant_std_max_raw",
+            value=600.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "pulse_std_raw <= 600 for near-constant evidence in no_contact AND. "
+                "no_contact≈544-586; normal≈661-667."
+            ),
+        ),
+        SPParameter(
+            name="weak_signal_std_max_raw",
+            value=620.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "pulse_std_raw <= 620 → weak_signal after higher-precedence rules. "
+                "weak≈529-570; normal≈661-667."
+            ),
+        ),
+        SPParameter(
+            name="clipping_fraction_max",
+            value=0.0,
+            unit="fraction",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="clipping_fraction > 0.0 → saturated. sat scenarios≈0.5; others≈0.0.",
+        ),
+        SPParameter(
+            name="baseline_drift_max_raw",
+            value=800.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "abs(baseline_drift_raw) >= 800 → unstable_baseline. "
+                "baseline segment-median excursion≈2113-2197; "
+                "normal≈24-99; motion≈276-392; weak≈283-303."
+            ),
+        ),
+        SPParameter(
+            name="motion_metric_max",
+            value=100.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "motion_metric >= 100 → motion_artifact. "
+                "motion mean|Δpulse|≈237-251; normal≈39-40; baseline≈40-41; unstable_load≈41-43."
+            ),
+        ),
+        SPParameter(
+            name="unstable_load_std_max_raw",
+            value=1000.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "load_std_raw >= 1000 → internal UNSTABLE_CONTACT_LOAD → manual_review. "
+                "unstable_load≈8913; normal≈12; motion≈4238 but motion precedes."
+            ),
+        ),
+        SPParameter(
+            name="min_valid_duration_s",
+            value=2.0,
+            unit="s",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "valid_duration_s < 2.0 → insufficient_duration/too_short. "
+                "insufficient_duration≈0.996; normal≈7.996. Not a clinical minimum."
+            ),
+        ),
+        SPParameter(
+            name="comparison_tolerance",
+            value=0.0,
+            unit=None,
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Explicit numeric tolerance for threshold comparisons; natural margins preferred.",
+        ),
+    )
+    params = SPParameterSet(
+        parameter_version=SP_PARAMETER_VERSION_P2B,
+        processing_version=SP_PROCESSING_VERSION_P2B,
+        parameters=_structural_parameters() + _pending_h1_parameters() + simulation,
     )
     params.validate()
     return params
