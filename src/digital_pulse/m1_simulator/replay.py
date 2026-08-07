@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from digital_pulse.m1_contracts import (
+    FileRole,
     M1ContractError,
     M1Sample,
     M1Session,
@@ -16,7 +17,22 @@ from digital_pulse.m1_contracts import (
 )
 
 from .artifacts import ArtifactError
+from .paths import resolve_contained_file
 from .versions import REPLAY_VERSION
+
+
+def resolve_file_role(session_dir: Path, session: M1Session, role: FileRole | str) -> Path:
+    """Resolve exactly one FileRef for ``role`` under ``session_dir`` with containment checks."""
+    role_value = role.value if isinstance(role, FileRole) else str(role)
+    matches = [ref for ref in session.files if ref.role.value == role_value]
+    if not matches:
+        raise ArtifactError("missing_file_role", f"manifest does not reference role={role_value}")
+    if len(matches) > 1:
+        raise ArtifactError("duplicate_file_role", f"manifest has multiple role={role_value} entries")
+    path = resolve_contained_file(session_dir, matches[0].relative_path, role=role_value)
+    if not path.is_file():
+        raise ArtifactError("missing_file", f"{role_value} file not found: {path}")
+    return path
 
 
 class ReplayDataSource:
@@ -26,7 +42,7 @@ class ReplayDataSource:
         self._session_path = Path(session_path)
         self._allow_incomplete = bool(allow_incomplete)
         self._session = self._load_manifest()
-        self._samples_path = self._resolve_samples_path()
+        self._samples_path = resolve_file_role(self._session_path, self._session, FileRole.SAMPLES)
         if not self._session.completed and not self._allow_incomplete:
             raise ArtifactError(
                 "incomplete_session",
@@ -57,9 +73,11 @@ class ReplayDataSource:
     def session_path(self) -> Path:
         return self._session_path
 
+    @property
+    def samples_path(self) -> Path:
+        return self._samples_path
+
     def samples(self) -> Iterator[M1Sample]:
-        if not self._samples_path.is_file():
-            raise ArtifactError("missing_samples", f"samples file not found: {self._samples_path}")
         with self._samples_path.open("r", encoding="utf-8") as handle:
             for line_no, line in enumerate(handle, start=1):
                 text = line.strip()
@@ -94,17 +112,3 @@ class ReplayDataSource:
         except (M1ContractError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ArtifactError("invalid_manifest", f"invalid manifest.json: {exc}") from exc
         return session
-
-    def _resolve_samples_path(self) -> Path:
-        for file_ref in self._session.files:
-            if file_ref.role.value == "samples":
-                relative = file_ref.relative_path.replace("\\", "/")
-                if (
-                    not relative
-                    or relative.startswith("/")
-                    or ".." in relative.split("/")
-                    or ":" in relative
-                ):
-                    raise ArtifactError("invalid_path", "samples path must be session-relative")
-                return self._session_path / relative
-        raise ArtifactError("missing_samples", "manifest does not reference a samples file")
