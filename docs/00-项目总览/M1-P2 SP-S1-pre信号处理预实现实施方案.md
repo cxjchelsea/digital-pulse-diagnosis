@@ -1,6 +1,6 @@
 # M1-P2 SP-S1-pre信号处理预实现实施方案
 
-版本：0.1.2；状态：M1-P2A/P2B已实现（`m1_sp`）；P2C/P2D未开始。
+版本：0.1.3；状态：M1-P2A/P2B/P2C已实现（`m1_sp`）；P2D未开始。
 
 ## 1. 阶段定位
 
@@ -168,10 +168,10 @@ P2A职责：
 | normalization | M1Sample→NormalizedSession，保留mask和时间（P2A） |
 | integrity | CRC/sequence/timestamp/sensor/session完整性（P2A） |
 | windows | 结构性稳定窗口（P2A） |
-| processor | `SPPreprocessor`（P2A）+ `SPQualityProcessor`（P2B；P2D再扩展正式`SPProcessor`） |
-| metrics / quality / projection | P2B raw指标、规则分类、`M1QualityResult`投影 |
+| processor | `SPPreprocessor`（P2A）+ `SPQualityProcessor`（P2B/P2C；P2D再扩展正式`SPProcessor`） |
+| metrics / quality / projection | P2B raw指标 + P2C beat/reference 扩展、`M1QualityResult`投影 |
+| filters / beats / reference | P2C 因果/离线滤波、逐搏、PPG 一对一匹配 |
 | observations | P2A Final Review：观测序列/时间戳异常 |
-| filters / beats | P2C 后续 |
 
 ## 7. 内部数据模型
 
@@ -409,21 +409,26 @@ blocked_before_quality
 - `M1QualityProjector` → 正式 `M1QualityResult`（`score/confidence=null`，`parameter_status=synthetic_only`）；
 - `SPQualityStageResult` 阶段性结果（非最终 P2D `SPProcessingResult`）；
 - characterization fixture：`tests/fixtures/m1_sp/p2b_characterization.json`；
-- **未实现**滤波 / 逐搏 / PPG / `reference_mismatch` / formal M1-P2 acceptance。
+- 滤波 / 逐搏 / PPG / `reference_mismatch` 属于 P2C（已完成）；formal M1-P2 acceptance 仍属 P2D。
 
-### M1-P2C：滤波、逐搏与PPG对齐
+### M1-P2C：滤波、逐搏与PPG对齐（已完成）
 
-完成：
+已完成：
 
-- causal/offline filter分离；
-- beat detection/segmentation；
-- beat_count；
-- PPG matching；
-- insufficient beats / unstable intervals / reference mismatch。
+- `FilterBank`：`CausalFIRFilter`（prefix invariant / chunk==whole）+ `OfflineReviewFilter`（reflect pad）；
+- `BeatDetector` / `BeatSegmenter`（offline_review 源；不用 BeatTimeline / scenario HR）；
+- `PPGDetector` + `ReferenceAligner`（单调一对一；`lag_ms = ppg - pulse`）；
+- 正式投影 `beat_count` / `ppg_match_rate`（0 beat 时不伪造 match_rate=0）；
+- `insufficient_beats` / `unstable_intervals` / `reference_unavailable` / `reference_mismatch`；
+- raw P2B 失败优先，滤波/beat 不得覆盖；
+- 无 StableWindow → `window-none-0001` / `insufficient_duration` / `too_short`（禁止静默空 quality）；
+- `default_p2c_parameter_set()`（`0.3.0-p2c`）；P2A/P2B digest 不变；
+- characterization：`tests/fixtures/m1_sp/p2c_characterization.json`；
+- **未实现**正式 `SPProcessor` / 16+2 acceptance / M1-P2 CI gate（P2D）。
 
-### M1-P2D：统一处理入口与综合验收
+### M1-P2D：统一处理入口与综合验收（未开始）
 
-完成：
+计划完成：
 
 - `SPProcessor.process(...)`；
 - provenance/version/digest；
