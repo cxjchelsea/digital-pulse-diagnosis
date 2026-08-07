@@ -1,0 +1,361 @@
+{
+  "artifact_role": "golden_summaries",
+  "acceptance_version": "0.4.0-p1d",
+  "artifact_format_version": "1.0.0",
+  "recorder_version": "0.4.0-p1d",
+  "replay_version": "0.4.0-p1d",
+  "seed": 1001,
+  "duration_s": 2.0,
+  "insufficient_duration_s": 1.2,
+  "sample_rate_hz": 250.0,
+  "software_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "case_count": 18,
+  "cases": [
+    {
+      "case_id": "retry_improves",
+      "case_type": "plan",
+      "sample_count": null,
+      "attempt_sample_counts": [
+        500,
+        500
+      ],
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed",
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": null,
+      "expected_quality_label": "acceptable",
+      "expected_int_action": "accept"
+    },
+    {
+      "case_id": "retry_still_fails",
+      "case_type": "plan",
+      "sample_count": null,
+      "attempt_sample_counts": [
+        500,
+        500,
+        500
+      ],
+      "completed": false,
+      "completion_reason": "retry_exhausted",
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed",
+        "session_started",
+        "session_completed",
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": null,
+      "expected_quality_label": "weak_signal",
+      "expected_int_action": "reposition"
+    },
+    {
+      "case_id": "abort",
+      "case_type": "scenario",
+      "sample_count": 251,
+      "attempt_sample_counts": null,
+      "completed": false,
+      "completion_reason": "abort_and_release",
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "abort",
+        "session_failed"
+      ],
+      "sample_stream_sha256": "926a77a5f240498cd2a8a086a9dea8bf82e60489b9588dbcf76839d487002ce9",
+      "expected_quality_label": "data_integrity_failure",
+      "expected_int_action": "abort_and_release"
+    },
+    {
+      "case_id": "baseline_drift",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "3bad5bb3281f767432696f1a01868510377595b04cc884517ca3d38ec55d7294",
+      "expected_quality_label": "unstable_baseline",
+      "expected_int_action": "retry_same_position"
+    },
+    {
+      "case_id": "device_fault",
+      "case_type": "scenario",
+      "sample_count": 251,
+      "attempt_sample_counts": null,
+      "completed": false,
+      "completion_reason": "device_fault",
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "device_fault",
+        "session_failed"
+      ],
+      "sample_stream_sha256": "5c2b892f7489911e04c66fa87ead76e613d203ad6199fbc3bcb073673481eabc",
+      "expected_quality_label": "data_integrity_failure",
+      "expected_int_action": "abort_and_release"
+    },
+    {
+      "case_id": "frame_loss",
+      "case_type": "scenario",
+      "sample_count": 497,
+      "attempt_sample_counts": null,
+      "completed": false,
+      "completion_reason": "integrity_failure",
+      "missing_frame_count": 3,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 3,
+      "event_kinds": [
+        "session_started",
+        "frame_loss",
+        "frame_loss",
+        "frame_loss",
+        "frame_sequence_gap_observed",
+        "session_failed"
+      ],
+      "sample_stream_sha256": "cc91d04e7e2dc6ad227ca670249f1158bd8a724ab873a6a8b62e5ebed2f50659",
+      "expected_quality_label": "data_integrity_failure",
+      "expected_int_action": "stop"
+    },
+    {
+      "case_id": "insufficient_duration",
+      "case_type": "scenario",
+      "sample_count": 300,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "5ee1d8d905d65df479e86a37e854f4656a099e4c69ecb2f5a0ab6b89546629f3",
+      "expected_quality_label": "insufficient_duration",
+      "expected_int_action": "retry_same_position"
+    },
+    {
+      "case_id": "lower_saturation",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "2fac0e08645f254957cdf25f203b8d23ae60b8fb6ca434cf3da6616abc60eb45",
+      "expected_quality_label": "saturated",
+      "expected_int_action": "stop"
+    },
+    {
+      "case_id": "motion_artifact",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "a278635c35d0f67f69cee8c60b5b7ecee10dad6196666945c53819f3d2b813d4",
+      "expected_quality_label": "motion_artifact",
+      "expected_int_action": "retry_same_position"
+    },
+    {
+      "case_id": "no_contact",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "c39d5c5388eaa33b4b6827960f084ee56c2b9a820c8dc8b8e4365487fa98a342",
+      "expected_quality_label": "no_contact",
+      "expected_int_action": "reposition"
+    },
+    {
+      "case_id": "normal_high_quality",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "98f2e4202533bac771d8072515396c7af126a46ee3e1e9fa80db0ee786c6e5a0",
+      "expected_quality_label": "acceptable",
+      "expected_int_action": "accept"
+    },
+    {
+      "case_id": "ppg_misalignment",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "b2e345281ef2d34aed077779dc0ffae1fd555afcdbb154f3d14bc17411202d02",
+      "expected_quality_label": "reference_mismatch",
+      "expected_int_action": "manual_review"
+    },
+    {
+      "case_id": "raw_persistence_failure",
+      "case_type": "scenario",
+      "sample_count": 25,
+      "attempt_sample_counts": null,
+      "completed": false,
+      "completion_reason": "integrity_failure",
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "persistence_failure",
+        "session_failed"
+      ],
+      "sample_stream_sha256": "0aeb35ee04e62d0068f71607fd548117c582923e051d1e8e668f9804b9606fe5",
+      "expected_quality_label": "data_integrity_failure",
+      "expected_int_action": "stop"
+    },
+    {
+      "case_id": "sensor_disconnection",
+      "case_type": "scenario",
+      "sample_count": 251,
+      "attempt_sample_counts": null,
+      "completed": false,
+      "completion_reason": "device_fault",
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "sensor_disconnection",
+        "session_failed"
+      ],
+      "sample_stream_sha256": "0da61ebde98f81903eb4a1d5ab6f3ca21db084b690cfa6d7361d8211fee6f04a",
+      "expected_quality_label": "data_integrity_failure",
+      "expected_int_action": "stop"
+    },
+    {
+      "case_id": "timestamp_regression",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": false,
+      "completion_reason": "integrity_failure",
+      "missing_frame_count": 0,
+      "timestamp_error_count": 1,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "timestamp_regression",
+        "session_failed"
+      ],
+      "sample_stream_sha256": "cf05a4cf5c569b10cceb2500cb2b35ece7fdc094e975a1d3c9e5ca312dc16b72",
+      "expected_quality_label": "data_integrity_failure",
+      "expected_int_action": "stop"
+    },
+    {
+      "case_id": "unstable_load",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "7fcb41f8a834819757ce04401deb746bd2c1234f9017774e881395278ab71e31",
+      "expected_quality_label": "manual_review_required",
+      "expected_int_action": "manual_review"
+    },
+    {
+      "case_id": "upper_saturation",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "962078c6a599779644983a0a457a859b302e616d091838f23d4c0fbacb350823",
+      "expected_quality_label": "saturated",
+      "expected_int_action": "stop"
+    },
+    {
+      "case_id": "weak_signal",
+      "case_type": "scenario",
+      "sample_count": 500,
+      "attempt_sample_counts": null,
+      "completed": true,
+      "completion_reason": null,
+      "missing_frame_count": 0,
+      "timestamp_error_count": 0,
+      "dropped_sample_count": 0,
+      "event_kinds": [
+        "session_started",
+        "session_completed"
+      ],
+      "sample_stream_sha256": "53326dc094da76db42578fa5523bc9e3bf843ad1341ec63ed18227bf55a9844a",
+      "expected_quality_label": "weak_signal",
+      "expected_int_action": "retry_same_position"
+    }
+  ]
+}

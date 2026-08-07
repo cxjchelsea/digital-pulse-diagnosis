@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-simulator-scenario.schema.json",
+  "title": "M1 Simulator Scenario Artifact",
+  "description": "Simulator auxiliary scenario.json artifact. Not an M1-P0 FileRole.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_version",
+    "artifact_role",
+    "scenario_id",
+    "scenario_version",
+    "simulator_version",
+    "artifact_format_version",
+    "case_type",
+    "description",
+    "configuration",
+    "configuration_digest",
+    "limitations"
+  ],
+  "properties": {
+    "artifact_version": { "type": "string", "minLength": 1 },
+    "artifact_role": { "const": "simulator_scenario" },
+    "scenario_id": { "type": "string", "minLength": 1 },
+    "scenario_version": { "type": "string", "minLength": 1 },
+    "simulator_version": { "type": "string", "minLength": 1 },
+    "artifact_format_version": { "type": "string", "minLength": 1 },
+    "recorder_version": { "type": "string" },
+    "case_type": { "type": "string", "enum": ["single_attempt"] },
+    "description": { "type": "string" },
+    "configuration": { "type": "object" },
+    "configuration_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "synthetic_input",
+          "pending_h1_calibration",
+          "not_hardware_validated",
+          "not_for_medical_use"
+        ]
+      }
+    }
+  }
+}

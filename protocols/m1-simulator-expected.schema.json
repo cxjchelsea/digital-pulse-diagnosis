@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-simulator-expected.schema.json",
+  "title": "M1 Simulator Expected Artifact",
+  "description": "Test-oracle expected.json. Not algorithm output and not an M1-P0 FileRole.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_version",
+    "artifact_role",
+    "not_algorithm_output",
+    "scenario_id",
+    "expected_quality_label",
+    "expected_reason_codes",
+    "expected_int_action",
+    "analysis_allowed",
+    "expected_completion",
+    "expected_completion_reason",
+    "limitations"
+  ],
+  "properties": {
+    "artifact_version": { "type": "string", "minLength": 1 },
+    "artifact_role": { "const": "test_oracle" },
+    "not_algorithm_output": { "const": true },
+    "scenario_id": { "type": "string", "minLength": 1 },
+    "plan_id": { "type": ["string", "null"] },
+    "expected_quality_label": {
+      "type": "string",
+      "enum": [
+        "acceptable",
+        "weak_signal",
+        "no_contact",
+        "saturated",
+        "unstable_baseline",
+        "motion_artifact",
+        "insufficient_duration",
+        "data_integrity_failure",
+        "reference_mismatch",
+        "manual_review_required"
+      ]
+    },
+    "expected_reason_codes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expected_int_action": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "retry_same_position",
+        "reposition",
+        "manual_review",
+        "stop",
+        "abort_and_release"
+      ]
+    },
+    "analysis_allowed": { "type": "boolean" },
+    "expected_completion": { "type": "boolean" },
+    "expected_completion_reason": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "accepted",
+        "operator_stop",
+        "retry_exhausted",
+        "quality_blocked",
+        "integrity_failure",
+        "device_fault",
+        "abort_and_release",
+        "incomplete_tail",
+        "imported_partial",
+        "other"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "synthetic_input",
+          "pending_h1_calibration",
+          "not_hardware_validated",
+          "not_for_medical_use"
+        ]
+      }
+    }
+  }
+}

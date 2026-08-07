@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/adaptive-radial-pulse/m1-simulator-event.schema.json",
+  "title": "M1 Simulator Event Artifact",
+  "description": "One events.jsonl row for the M1 simulator. Not an M1Sample.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_version",
+    "event_index",
+    "kind",
+    "frame_sequence",
+    "device_time_us",
+    "payload"
+  ],
+  "properties": {
+    "artifact_version": { "type": "string", "minLength": 1 },
+    "event_index": { "type": "integer", "minimum": 0 },
+    "kind": { "type": "string", "minLength": 1 },
+    "frame_sequence": { "type": ["integer", "null"] },
+    "device_time_us": { "type": ["integer", "null"] },
+    "elapsed_time_s": { "type": ["number", "null"] },
+    "payload": { "type": "object" }
+  }
+}
