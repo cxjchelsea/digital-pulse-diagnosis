@@ -1,6 +1,6 @@
 # M1-P2 SP-S1-pre信号处理预实现实施方案
 
-版本：0.1.0；状态：设计阶段已完成，算法实现未开始。
+版本：0.1.1；状态：M1-P2A已实现（`m1_sp`）；P2B/P2C/P2D未开始。
 
 ## 1. 阶段定位
 
@@ -141,41 +141,35 @@ M1Session + Iterable[M1Sample]
 - 输出强类型结构；
 - 不依赖模拟器内部对象。
 
-## 6. 建议代码结构
+## 6. 代码结构
+
+P2A落地包名为`src/digital_pulse/m1_sp/`（设计阶段曾建议`m1_signal_processing`；实现以实际包为准）。
 
 ```text
-src/digital_pulse/m1_signal_processing/
+src/digital_pulse/m1_sp/
 ├── __init__.py
-├── config.py
+├── errors.py
 ├── models.py
-├── normalize.py
+├── parameters.py
+├── normalization.py
 ├── integrity.py
-├── windowing.py
-├── metrics.py
-├── filters.py
-├── beats.py
-├── reference.py
-├── quality.py
-├── processor.py
-└── versions.py
+├── windows.py
+└── processor.py
 ```
 
-职责：
+后续P2B/P2C可在同包扩展 metrics / filters / beats / quality，或按需拆分。
+
+P2A职责：
 
 | 模块 | 职责 |
 |---|---|
-| config | 参数profile、版本、digest、状态 |
-| models | 内部强类型结果，不扩展M1正式Schema |
-| normalize | M1Sample→连续数组视图，保留mask和时间 |
-| integrity | CRC/sequence/timestamp/sensor/session完整性 |
-| windowing | 稳定窗口和有效时长 |
-| metrics | 原始质量指标与内部证据 |
-| filters | 实时因果/离线复核滤波分离 |
-| beats | 候选峰、足点、逐搏切分 |
-| reference | PPG候选、匹配和时间偏差证据 |
-| quality | 规则优先级和正式标签映射 |
-| processor | 统一入口和provenance |
-| versions | processing/parameter版本 |
+| parameters | 参数分层、版本、digest（P2A） |
+| models | 内部强类型结果，不扩展M1正式Schema（P2A） |
+| normalization | M1Sample→NormalizedSession，保留mask和时间（P2A） |
+| integrity | CRC/sequence/timestamp/sensor/session完整性（P2A） |
+| windows | 结构性稳定窗口（P2A） |
+| processor | `SPPreprocessor` 入口（P2A；P2D再扩展正式`SPProcessor`） |
+| metrics / filters / beats / quality | P2B/P2C 后续 |
 
 ## 7. 内部数据模型
 
@@ -390,17 +384,18 @@ blocked_before_quality
 
 ## 16. 分阶段实现
 
-### M1-P2A：输入、完整性、窗口与参数骨架
+### M1-P2A：输入、完整性、窗口与参数骨架（已完成）
 
-完成：
+已完成：
 
-- package骨架；
-- SPConfig / ParameterProfile；
-- M1Sample normalization；
-- IntegrityAnalyzer；
-- StableWindowSelector；
-- structural tests；
-- 不生成最终质量分类。
+- `m1_sp` package；
+- `SPParameterSet` / 参数分层与 digest；
+- `InputNormalizer` → `NormalizedSession`；
+- `IntegrityAnalyzer` → `IntegrityAnalysis`（含 recorded vs observed cross-check）；
+- `StableWindowSelector` → 结构性窗口；
+- `SPPreprocessor` 入口；
+- structural / oracle-isolation tests；
+- **不生成**最终质量分类 / `M1QualityResult`。
 
 ### M1-P2B：raw质量指标与规则分类
 
