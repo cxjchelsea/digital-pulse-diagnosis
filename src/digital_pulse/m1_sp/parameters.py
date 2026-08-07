@@ -1,4 +1,4 @@
-"""SP-S1-pre parameter set, versions, and deterministic digests (P2A/P2B)."""
+"""SP-S1-pre parameter set, versions, and deterministic digests (P2A/P2B/P2C)."""
 
 from __future__ import annotations
 
@@ -12,11 +12,13 @@ from digital_pulse.m1_contracts import configuration_digest
 
 from .errors import SPError
 
-# Explicit stage versions. P2A payload/digest must remain independently constructible.
+# Explicit stage versions. P2A/P2B payload/digest must remain independently constructible.
 SP_PROCESSING_VERSION_P2A = "0.1.0-p2a"
 SP_PARAMETER_VERSION_P2A = "0.1.0-p2a"
 SP_PROCESSING_VERSION_P2B = "0.2.0-p2b"
 SP_PARAMETER_VERSION_P2B = "0.2.0-p2b"
+SP_PROCESSING_VERSION_P2C = "0.3.0-p2c"
+SP_PARAMETER_VERSION_P2C = "0.3.0-p2c"
 
 # Compat aliases — existing P2A tests import these names.
 SP_PROCESSING_VERSION = SP_PROCESSING_VERSION_P2A
@@ -26,6 +28,7 @@ KNOWN_VERSION_PAIRS = frozenset(
     {
         (SP_PARAMETER_VERSION_P2A, SP_PROCESSING_VERSION_P2A),
         (SP_PARAMETER_VERSION_P2B, SP_PROCESSING_VERSION_P2B),
+        (SP_PARAMETER_VERSION_P2C, SP_PROCESSING_VERSION_P2C),
     }
 )
 
@@ -53,7 +56,7 @@ PENDING_H1_SLOT_NAMES = (
     "motion_threshold",
 )
 
-# Metric formula versions frozen with P2B simulation-only thresholds.
+# Metric / algorithm formula versions.
 METRIC_FORMULA_VERSIONS = {
     "valid_fraction": "valid_fraction:v1",
     "clipping_fraction": "clipping_fraction:v1",
@@ -61,10 +64,23 @@ METRIC_FORMULA_VERSIONS = {
     "baseline_drift_raw": "baseline_drift_raw:v1",
     "motion_metric": "motion_metric:v1",
     "load_variability": "load_variability:v1",
+    "causal_filter": "causal_filter:v1",
+    "offline_filter": "offline_filter:v1",
+    "beat_peak": "beat_peak:v1",
+    "beat_prominence": "beat_prominence:v1",
+    "beat_interval_cv": "beat_interval_cv:v1",
+    "reference_match": "reference_match:v1",
+    "ppg_match_rate": "ppg_match_rate:v1",
 }
 
 # Characterization seeds (fixed; never random per run).
 P2B_CHARACTERIZATION_SEEDS = (1001, 1002, 1003, 1004, 1005)
+P2C_CHARACTERIZATION_SEEDS = (1001, 1002, 1003, 1004, 1005)
+
+# Frozen digests for regression guards.
+P2A_CONFIGURATION_DIGEST = "f546f8910d45df71faaaf6569d861de39ae991e63beed175ff5b7c5ad0040f1c"
+P2B_CONFIGURATION_DIGEST = "c34fe3b60b25a9f496ddc3172084af379a605b7c2a73659ece83f02e723dea29"
+P2C_CONFIGURATION_DIGEST = "b71d02832551f5236f34ecb3ce866bb50df3420530fd3bfc8b0b17a583274371"
 
 
 class SPParameterClass(str, Enum):
@@ -231,12 +247,9 @@ def default_p2a_parameter_set() -> SPParameterSet:
     return params
 
 
-def default_p2b_parameter_set() -> SPParameterSet:
-    """P2B: P2A structural/pending slots + simulation-only quality thresholds.
-
-    Thresholds frozen from multi-seed characterization (seeds 1001-1005).
-    """
-    simulation = (
+def _p2b_simulation_parameters() -> tuple[SPParameter, ...]:
+    """Frozen P2B simulation-only thresholds (must remain byte-identical for digest)."""
+    return (
         SPParameter(
             name="baseline_segment_fraction",
             value=0.2,
@@ -337,10 +350,136 @@ def default_p2b_parameter_set() -> SPParameterSet:
             rationale="Explicit numeric tolerance for threshold comparisons; natural margins preferred.",
         ),
     )
+
+
+def _p2c_simulation_parameters() -> tuple[SPParameter, ...]:
+    """P2C filter/beat/reference simulation-only thresholds."""
+    return (
+        SPParameter(
+            name="causal_filter_num_taps",
+            value=15,
+            unit="taps",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Odd-length causal FIR taps for synthetic offline/online path.",
+        ),
+        SPParameter(
+            name="offline_filter_num_taps",
+            value=21,
+            unit="taps",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Odd-length offline_review FIR taps with reflect padding.",
+        ),
+        SPParameter(
+            name="filter_cutoff_normalized",
+            value=0.08,
+            unit="cycles/sample",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Hamming-sinc lowpass cutoff (~20 Hz at 250 Hz). Not a clinical band.",
+        ),
+        SPParameter(
+            name="min_peak_distance_s",
+            value=0.5,
+            unit="s",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Minimum peak distance samples = round(s * fs). Suppresses dicrotic secondaries.",
+        ),
+        SPParameter(
+            name="min_peak_prominence_raw",
+            value=1000.0,
+            unit="raw",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "Local prominence gate. Main synthetic peaks≈2300-2500; "
+                "secondary notches≈420-800 (seeds 1001-1005)."
+            ),
+        ),
+        SPParameter(
+            name="foot_search_s",
+            value=0.25,
+            unit="s",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Backward search window for beat foot local minimum.",
+        ),
+        SPParameter(
+            name="min_beats_per_window",
+            value=4,
+            unit="beats",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="beat_count < 4 with adequate duration → insufficient_beats.",
+        ),
+        SPParameter(
+            name="max_interval_cv",
+            value=0.35,
+            unit="ratio",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="interval_cv >= max → unstable_intervals (algorithmic, not arrhythmia).",
+        ),
+        SPParameter(
+            name="reference_min_lag_ms",
+            value=20.0,
+            unit="ms",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="Minimum allowed PPG-pulse lag (lag = ppg - pulse). Observed normal≈72-80ms.",
+        ),
+        SPParameter(
+            name="reference_max_lag_ms",
+            value=140.0,
+            unit="ms",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale=(
+                "Maximum lag for a valid match. normal≈72-80ms; misalignment≈220ms "
+                "falls outside and reduces match_rate."
+            ),
+        ),
+        SPParameter(
+            name="min_ppg_match_rate",
+            value=0.7,
+            unit="fraction",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="match_rate < 0.7 → reference_mismatch when reference available.",
+        ),
+        SPParameter(
+            name="max_lag_mad_ms",
+            value=50.0,
+            unit="ms",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="lag MAD above threshold contributes to mismatch evidence.",
+        ),
+        SPParameter(
+            name="min_ppg_valid_fraction",
+            value=0.5,
+            unit="fraction",
+            parameter_class=SPParameterClass.SIMULATION_ONLY,
+            rationale="PPG valid_fraction below this → reference_unavailable.",
+        ),
+    )
+
+
+def default_p2b_parameter_set() -> SPParameterSet:
+    """P2B: P2A structural/pending slots + simulation-only quality thresholds.
+
+    Thresholds frozen from multi-seed characterization (seeds 1001-1005).
+    """
     params = SPParameterSet(
         parameter_version=SP_PARAMETER_VERSION_P2B,
         processing_version=SP_PROCESSING_VERSION_P2B,
-        parameters=_structural_parameters() + _pending_h1_parameters() + simulation,
+        parameters=_structural_parameters() + _pending_h1_parameters() + _p2b_simulation_parameters(),
+    )
+    params.validate()
+    return params
+
+
+def default_p2c_parameter_set() -> SPParameterSet:
+    """P2C: P2B parameters + filter/beat/reference simulation-only thresholds."""
+    params = SPParameterSet(
+        parameter_version=SP_PARAMETER_VERSION_P2C,
+        processing_version=SP_PROCESSING_VERSION_P2C,
+        parameters=(
+            _structural_parameters()
+            + _pending_h1_parameters()
+            + _p2b_simulation_parameters()
+            + _p2c_simulation_parameters()
+        ),
     )
     params.validate()
     return params

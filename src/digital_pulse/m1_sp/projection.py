@@ -16,6 +16,8 @@ FORMAL_METRIC_KEYS = (
     "clipping_fraction",
     "baseline_drift_raw",
     "pulse_std_raw",
+    "beat_count",
+    "ppg_match_rate",
 )
 
 
@@ -87,16 +89,22 @@ class M1QualityProjector:
 
 
 def _formal_metrics(metrics: QualityMetricsInternal) -> dict[str, Any]:
-    candidates: Mapping[str, float | None] = {
+    candidates: Mapping[str, float | int | None] = {
         "valid_fraction": metrics.valid_fraction,
         "clipping_fraction": metrics.clipping_fraction,
         "baseline_drift_raw": metrics.baseline_drift_raw,
         "pulse_std_raw": metrics.pulse_std_raw,
+        "beat_count": metrics.beat_count,
+        "ppg_match_rate": metrics.ppg_match_rate,
     }
     out: dict[str, Any] = {}
     for key in FORMAL_METRIC_KEYS:
         value = candidates[key]
         if value is None:
+            # Unified omit policy: mathematically undefined / not computed → omit key.
+            continue
+        if key == "beat_count":
+            out[key] = int(value)
             continue
         if isinstance(value, float) and not math.isfinite(value):
             continue

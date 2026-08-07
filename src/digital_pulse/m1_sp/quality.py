@@ -9,6 +9,7 @@ import numpy as np
 from digital_pulse.m1_contracts import M1Session, QualityLabel, RawPersistenceStatus
 
 from .models import (
+    BeatReferenceBundle,
     IntegrityAnalysis,
     NormalizedSession,
     ProcessingEvidence,
@@ -16,7 +17,7 @@ from .models import (
     QualityMetricsInternal,
     StableWindow,
 )
-from .parameters import SPParameterSet
+from .parameters import SP_PARAMETER_VERSION_P2C, SPParameterSet
 
 # Formal reason code deterministic order (schema enum order).
 FORMAL_REASON_ORDER: tuple[str, ...] = (
@@ -161,6 +162,7 @@ class QualityEvaluator:
         window: StableWindow,
         metrics: QualityMetricsInternal,
         profile: SPParameterSet,
+        beat_ref: BeatReferenceBundle | None = None,
     ) -> QualityEvaluation:
         del session, integrity  # window path assumes integrity already cleared
         tol = float(profile.require_value("comparison_tolerance"))
@@ -189,6 +191,21 @@ class QualityEvaluator:
         if weak is not None:
             return weak
 
+        # P2C supplemental rules — never override raw primary failures above.
+        if beat_ref is not None and _profile_has_p2c(profile):
+            insufficient = self._evaluate_insufficient_beats(metrics, beat_ref, profile, tol)
+            if insufficient is not None:
+                return insufficient
+            unstable = self._evaluate_unstable_intervals(metrics, beat_ref, profile, tol)
+            if unstable is not None:
+                return unstable
+            mismatch = self._evaluate_reference_mismatch(metrics, beat_ref, profile, tol)
+            if mismatch is not None:
+                return mismatch
+            unavailable = self._evaluate_reference_unavailable(metrics, beat_ref, profile, tol)
+            if unavailable is not None:
+                return unavailable
+
         manual = self._evaluate_manual_review(metrics, profile, tol)
         if manual is not None:
             return manual
@@ -197,6 +214,125 @@ class QualityEvaluator:
             primary_label=QualityLabel.ACCEPTABLE,
             reason_codes=(),
             internal_evidence=(),
+            metrics=metrics,
+        )
+
+    def _evaluate_insufficient_beats(
+        self,
+        metrics: QualityMetricsInternal,
+        beat_ref: BeatReferenceBundle,
+        profile: SPParameterSet,
+        tol: float,
+    ) -> QualityEvaluation | None:
+        min_beats = int(profile.require_value("min_beats_per_window"))
+        if beat_ref.beat_count >= min_beats:
+            return None
+        return QualityEvaluation(
+            primary_label=QualityLabel.INSUFFICIENT_DURATION,
+            reason_codes=sort_reason_codes(("insufficient_beats",)),
+            internal_evidence=(
+                ProcessingEvidence(
+                    code="INSUFFICIENT_BEATS",
+                    severity="error",
+                    observed_value=beat_ref.beat_count,
+                    threshold_name="min_beats_per_window",
+                ),
+            ),
+            metrics=metrics,
+        )
+
+    def _evaluate_unstable_intervals(
+        self,
+        metrics: QualityMetricsInternal,
+        beat_ref: BeatReferenceBundle,
+        profile: SPParameterSet,
+        tol: float,
+    ) -> QualityEvaluation | None:
+        max_cv = float(profile.require_value("max_interval_cv"))
+        if beat_ref.interval_cv is None:
+            return None
+        if not _geq(float(beat_ref.interval_cv), max_cv, tol):
+            return None
+        return QualityEvaluation(
+            primary_label=QualityLabel.MANUAL_REVIEW_REQUIRED,
+            reason_codes=sort_reason_codes(("unstable_intervals", "manual_review_requested")),
+            internal_evidence=(
+                ProcessingEvidence(
+                    code="UNSTABLE_INTERVALS",
+                    severity="warning",
+                    observed_value=beat_ref.interval_cv,
+                    threshold_name="max_interval_cv",
+                ),
+            ),
+            metrics=metrics,
+        )
+
+    def _evaluate_reference_mismatch(
+        self,
+        metrics: QualityMetricsInternal,
+        beat_ref: BeatReferenceBundle,
+        profile: SPParameterSet,
+        tol: float,
+    ) -> QualityEvaluation | None:
+        if not beat_ref.reference_available:
+            return None
+        if beat_ref.ppg_match_rate is None:
+            return None
+        min_rate = float(profile.require_value("min_ppg_match_rate"))
+        max_mad = float(profile.require_value("max_lag_mad_ms"))
+        rate_fail = _lt(float(beat_ref.ppg_match_rate), min_rate, tol)
+        mad_fail = (
+            beat_ref.lag_mad_ms is not None and _gt(float(beat_ref.lag_mad_ms), max_mad, tol)
+        )
+        if not (rate_fail or mad_fail):
+            return None
+        return QualityEvaluation(
+            primary_label=QualityLabel.REFERENCE_MISMATCH,
+            reason_codes=("reference_mismatch",),
+            internal_evidence=(
+                ProcessingEvidence(
+                    code="REFERENCE_MISMATCH",
+                    severity="error",
+                    observed_value=beat_ref.ppg_match_rate,
+                    threshold_name="min_ppg_match_rate",
+                    details={
+                        "ppg_match_rate": beat_ref.ppg_match_rate,
+                        "lag_mad_ms": beat_ref.lag_mad_ms,
+                        "median_lag_ms": beat_ref.median_lag_ms,
+                    },
+                ),
+            ),
+            metrics=metrics,
+        )
+
+    def _evaluate_reference_unavailable(
+        self,
+        metrics: QualityMetricsInternal,
+        beat_ref: BeatReferenceBundle,
+        profile: SPParameterSet,
+        tol: float,
+    ) -> QualityEvaluation | None:
+        min_frac = float(profile.require_value("min_ppg_valid_fraction"))
+        unavailable = (not beat_ref.reference_available) or (
+            beat_ref.ppg_valid_fraction is not None
+            and _lt(float(beat_ref.ppg_valid_fraction), min_frac, tol)
+        )
+        if not unavailable:
+            return None
+        # Only when pulse beats exist (reference optional).
+        if beat_ref.beat_count <= 0:
+            return None
+        return QualityEvaluation(
+            primary_label=QualityLabel.MANUAL_REVIEW_REQUIRED,
+            reason_codes=sort_reason_codes(("reference_unavailable", "manual_review_requested")),
+            internal_evidence=(
+                ProcessingEvidence(
+                    code="REFERENCE_UNAVAILABLE",
+                    severity="warning",
+                    observed_value=beat_ref.ppg_valid_fraction,
+                    threshold_name="min_ppg_valid_fraction",
+                ),
+            ),
             metrics=metrics,
         )
 
@@ -438,3 +574,7 @@ def _gt(value: float, threshold: float, tol: float) -> bool:
 
 def _geq(value: float, threshold: float, tol: float) -> bool:
     return value >= threshold - tol
+
+
+def _profile_has_p2c(profile: SPParameterSet) -> bool:
+    return profile.parameter_version == SP_PARAMETER_VERSION_P2C

@@ -152,6 +152,8 @@ class QualityMetricsInternal:
     total_sample_count: int
 
     evidence: tuple[ProcessingEvidence, ...] = ()
+    beat_count: int | None = None
+    ppg_match_rate: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,8 +165,21 @@ class QualityEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+class BeatReferenceBundle:
+    """P2C per-window beat/reference summary for quality extension."""
+
+    beat_count: int
+    interval_cv: float | None
+    ppg_match_rate: float | None
+    reference_available: bool
+    lag_mad_ms: float | None
+    median_lag_ms: float | None
+    ppg_valid_fraction: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class SPQualityStageResult:
-    """P2B stage result — not the final P2D SPProcessingResult."""
+    """P2B/P2C stage result — not the final P2D SPProcessingResult."""
 
     preprocessing: SPPreprocessResult
     processing_status: str
@@ -176,3 +191,6 @@ class SPQualityStageResult:
     parameter_version: str
     parameter_status: ParameterStatus
     configuration_digest: str
+    filter_views_by_window: Mapping[str, Any] = field(default_factory=dict)
+    beats_by_window: Mapping[str, Any] = field(default_factory=dict)
+    reference_by_window: Mapping[str, Any] = field(default_factory=dict)
