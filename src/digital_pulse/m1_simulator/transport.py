@@ -114,9 +114,24 @@ class TransportFaultInjector:
         self._regressions = {
             plan.frame_sequence: plan for plan in self._schedule if isinstance(plan, TimestampRegressionPlan)
         }
+        self._initial_frame = config.initial_frame_sequence
         self._previous_device_time_us: int | None = None
         self._last_emitted_sequence: int | None = None
-        self._gap_pending = False
+        self._dropped_count = 0
+        self._sequence_integrity_failures = 0
+        self._timestamp_integrity_failures = 0
+
+    @property
+    def dropped_sample_count(self) -> int:
+        return self._dropped_count
+
+    @property
+    def sequence_integrity_failures(self) -> int:
+        return self._sequence_integrity_failures
+
+    @property
+    def timestamp_integrity_failures(self) -> int:
+        return self._timestamp_integrity_failures
 
     def should_drop(self, tick: ClockTick) -> bool:
         for start, end in self._loss_ranges:
@@ -128,7 +143,7 @@ class TransportFaultInjector:
                     start_frame_sequence=start,
                     end_frame_sequence_exclusive=end,
                 )
-                self._gap_pending = True
+                self._dropped_count += 1
                 return True
         return False
 
@@ -160,6 +175,7 @@ class TransportFaultInjector:
             sequence_valid=True,
             timestamp_valid=False,
         )
+        self._timestamp_integrity_failures += 1
         return adjusted, integrity
 
     def apply_sequence_integrity(
@@ -167,19 +183,27 @@ class TransportFaultInjector:
         frame_sequence: int,
         integrity: ReceiveIntegrity,
     ) -> ReceiveIntegrity:
-        if self._gap_pending and self._last_emitted_sequence is not None:
-            if frame_sequence != self._last_emitted_sequence + 1:
-                integrity = ReceiveIntegrity(
-                    crc_valid=integrity.crc_valid,
-                    sequence_valid=False,
-                    timestamp_valid=integrity.timestamp_valid,
-                )
-                self._events.emit(
-                    "frame_sequence_gap_observed",
-                    frame_sequence=frame_sequence,
-                    previous_frame_sequence=self._last_emitted_sequence,
-                )
-            self._gap_pending = False
+        # Expected next sequence uses initial_frame when no sample has been emitted yet,
+        # so leading frame_loss (start at initial) marks the first visible frame invalid.
+        if self._last_emitted_sequence is None:
+            expected = self._initial_frame
+            previous = None
+        else:
+            expected = self._last_emitted_sequence + 1
+            previous = self._last_emitted_sequence
+        if frame_sequence != expected:
+            integrity = ReceiveIntegrity(
+                crc_valid=integrity.crc_valid,
+                sequence_valid=False,
+                timestamp_valid=integrity.timestamp_valid,
+            )
+            self._sequence_integrity_failures += 1
+            self._events.emit(
+                "frame_sequence_gap_observed",
+                frame_sequence=frame_sequence,
+                previous_frame_sequence=previous,
+                expected_frame_sequence=expected,
+            )
         return integrity
 
     def mark_emitted(self, frame_sequence: int) -> None:

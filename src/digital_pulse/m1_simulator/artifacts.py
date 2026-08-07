@@ -187,20 +187,37 @@ def compute_integrity(
     *,
     dropped_sample_count: int,
     raw_persistence_status: RawPersistenceStatus,
+    initial_frame_sequence: int = 0,
 ) -> IntegritySummary:
+    """Compute integrity from the observed sample stream.
+
+    ``missing_frame_count`` is derived from gaps in the visible/persisted
+    ``frame_sequence`` stream, including a leading gap from
+    ``initial_frame_sequence`` to the first visible frame.
+
+    ``dropped_sample_count`` is an independently supplied runtime observation
+    (e.g. TransportFaultInjector actual drops), not inferred from ScenarioConfig.
+    Trailing planned losses with no subsequent visible frame do not create a
+    sequence gap in ``missing_frame_count``; they appear only in dropped count
+    when the transport injector actually dropped them before interruption.
+    """
     missing = 0
     timestamp_errors = 0
-    previous_seq: int | None = None
     previous_device_time: int | None = None
-    for sample in samples:
-        if previous_seq is not None and sample.frame_sequence > previous_seq + 1:
-            missing += sample.frame_sequence - previous_seq - 1
-        previous_seq = sample.frame_sequence
-        if not sample.receive_integrity.timestamp_valid:
-            timestamp_errors += 1
-        elif previous_device_time is not None and sample.device_time_us < previous_device_time:
-            timestamp_errors += 1
-        previous_device_time = sample.device_time_us
+    if samples:
+        first = samples[0].frame_sequence
+        if first > initial_frame_sequence:
+            missing += first - initial_frame_sequence
+        previous_seq = first
+        for sample in samples:
+            if sample.frame_sequence > previous_seq + 1:
+                missing += sample.frame_sequence - previous_seq - 1
+            previous_seq = sample.frame_sequence
+            if not sample.receive_integrity.timestamp_valid:
+                timestamp_errors += 1
+            elif previous_device_time is not None and sample.device_time_us < previous_device_time:
+                timestamp_errors += 1
+            previous_device_time = sample.device_time_us
     return IntegritySummary(
         frame_count=len(samples),
         crc_error_count=0,
