@@ -1,0 +1,984 @@
+{
+  "characterization_version": "m1-p2c-v1",
+  "processing_version": "0.3.0-p2c",
+  "parameter_version": "0.3.0-p2c",
+  "configuration_digest": "b71d02832551f5236f34ecb3ce866bb50df3420530fd3bfc8b0b17a583274371",
+  "seed_set": [
+    1001,
+    1002,
+    1003,
+    1004,
+    1005
+  ],
+  "metric_formula_versions": {
+    "valid_fraction": "valid_fraction:v1",
+    "clipping_fraction": "clipping_fraction:v1",
+    "pulse_std_raw": "pulse_std_raw:v1",
+    "baseline_drift_raw": "baseline_drift_raw:v1",
+    "motion_metric": "motion_metric:v1",
+    "load_variability": "load_variability:v1",
+    "causal_filter": "causal_filter:v1",
+    "offline_filter": "offline_filter:v1",
+    "beat_peak": "beat_peak:v1",
+    "beat_prominence": "beat_prominence:v1",
+    "beat_interval_cv": "beat_interval_cv:v1",
+    "reference_match": "reference_match:v1",
+    "ppg_match_rate": "ppg_match_rate:v1"
+  },
+  "filter_config": {
+    "causal_filter_num_taps": 15,
+    "offline_filter_num_taps": 21,
+    "filter_cutoff_normalized": 0.08
+  },
+  "case_summaries": {
+    "normal_high_quality": {
+      "beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "ppg_beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "matched_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "ppg_match_rate": {
+        "n": 5,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      },
+      "median_lag_ms": {
+        "n": 5,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "lag_mad_ms": {
+        "n": 5,
+        "min": 0.0,
+        "max": 2.0,
+        "mean": 0.4
+      },
+      "interval_cv": {
+        "n": 5,
+        "min": 0.010340464581257107,
+        "max": 0.018309245124894236,
+        "mean": 0.014159788694827005
+      },
+      "median_pulse_prominence": {
+        "n": 5,
+        "min": 2386.693049265041,
+        "max": 2428.7831330920053,
+        "mean": 2408.96533897437
+      }
+    },
+    "weak_signal": {
+      "beat_count": {
+        "n": 5,
+        "min": 5.0,
+        "max": 6.0,
+        "mean": 5.8
+      },
+      "ppg_beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "matched_count": {
+        "n": 5,
+        "min": 5.0,
+        "max": 6.0,
+        "mean": 5.6
+      },
+      "ppg_match_rate": {
+        "n": 5,
+        "min": 0.8333333333333334,
+        "max": 1.0,
+        "mean": 0.9666666666666666
+      },
+      "median_lag_ms": {
+        "n": 5,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "lag_mad_ms": {
+        "n": 5,
+        "min": 0.0,
+        "max": 2.0,
+        "mean": 0.4
+      },
+      "interval_cv": {
+        "n": 5,
+        "min": 0.8829000313591349,
+        "max": 0.9655815228842267,
+        "mean": 0.9068691336860952
+      },
+      "median_pulse_prominence": {
+        "n": 5,
+        "min": 2379.740352453371,
+        "max": 2431.3221918999734,
+        "mean": 2408.08261137363
+      }
+    },
+    "motion_artifact": {
+      "beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 11.0,
+        "mean": 10.2
+      },
+      "ppg_beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "matched_count": {
+        "n": 5,
+        "min": 7.0,
+        "max": 10.0,
+        "mean": 8.4
+      },
+      "ppg_match_rate": {
+        "n": 5,
+        "min": 0.7,
+        "max": 1.0,
+        "mean": 0.8254545454545454
+      },
+      "median_lag_ms": {
+        "n": 5,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "lag_mad_ms": {
+        "n": 5,
+        "min": 0.0,
+        "max": 4.0,
+        "mean": 2.4
+      },
+      "interval_cv": {
+        "n": 5,
+        "min": 0.05011794999378746,
+        "max": 0.24248876630056124,
+        "mean": 0.14966918149857533
+      },
+      "median_pulse_prominence": {
+        "n": 5,
+        "min": 2456.4861351741947,
+        "max": 2986.7740916468774,
+        "mean": 2580.18958640565
+      }
+    },
+    "baseline_drift": {
+      "beat_count": {
+        "n": 5,
+        "min": 9.0,
+        "max": 10.0,
+        "mean": 9.6
+      },
+      "ppg_beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "matched_count": {
+        "n": 5,
+        "min": 9.0,
+        "max": 10.0,
+        "mean": 9.6
+      },
+      "ppg_match_rate": {
+        "n": 5,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      },
+      "median_lag_ms": {
+        "n": 5,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 74.8
+      },
+      "lag_mad_ms": {
+        "n": 5,
+        "min": 0.0,
+        "max": 4.0,
+        "mean": 1.6
+      },
+      "interval_cv": {
+        "n": 5,
+        "min": 0.010921626381844232,
+        "max": 0.29789715472178824,
+        "mean": 0.1275557582613252
+      },
+      "median_pulse_prominence": {
+        "n": 5,
+        "min": 2216.6395824911815,
+        "max": 2387.6303782711893,
+        "mean": 2314.0604444948112
+      }
+    },
+    "insufficient_duration": {
+      "beat_count": {
+        "n": 5,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      },
+      "ppg_beat_count": {
+        "n": 5,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      },
+      "matched_count": {
+        "n": 5,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      },
+      "ppg_match_rate": {
+        "n": 5,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0
+      },
+      "median_lag_ms": {
+        "n": 5,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "lag_mad_ms": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "median_pulse_prominence": {
+        "n": 5,
+        "min": 2359.7584745610857,
+        "max": 2387.4969910749405,
+        "mean": 2375.7615455338523
+      }
+    },
+    "ppg_misalignment": {
+      "beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "ppg_beat_count": {
+        "n": 5,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "matched_count": {
+        "n": 5,
+        "min": 5.0,
+        "max": 5.0,
+        "mean": 5.0
+      },
+      "ppg_match_rate": {
+        "n": 5,
+        "min": 0.5,
+        "max": 0.5,
+        "mean": 0.5
+      },
+      "median_lag_ms": {
+        "n": 5,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "lag_mad_ms": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "interval_cv": {
+        "n": 5,
+        "min": 0.010340464581257107,
+        "max": 0.018309245124894236,
+        "mean": 0.014159788694827005
+      },
+      "median_pulse_prominence": {
+        "n": 5,
+        "min": 2386.693049265041,
+        "max": 2428.7831330920053,
+        "mean": 2408.96533897437
+      }
+    }
+  },
+  "thresholds": [
+    {
+      "parameter": "min_peak_distance_s",
+      "value": 0.5,
+      "parameter_class": "simulation_only",
+      "observed_summary": null,
+      "rationale": "Minimum peak distance samples = round(s * fs). Suppresses dicrotic secondaries."
+    },
+    {
+      "parameter": "min_peak_prominence_raw",
+      "value": 1000.0,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 2386.693049265041,
+        "max": 2428.7831330920053,
+        "mean": 2408.96533897437
+      },
+      "rationale": "Local prominence gate. Main synthetic peaks≈2300-2500; secondary notches≈420-800 (seeds 1001-1005)."
+    },
+    {
+      "parameter": "min_beats_per_window",
+      "value": 4,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 10.0,
+        "max": 10.0,
+        "mean": 10.0
+      },
+      "rationale": "beat_count < 4 with adequate duration → insufficient_beats."
+    },
+    {
+      "parameter": "max_interval_cv",
+      "value": 0.35,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 0.010340464581257107,
+        "max": 0.018309245124894236,
+        "mean": 0.014159788694827005
+      },
+      "rationale": "interval_cv >= max → unstable_intervals (algorithmic, not arrhythmia)."
+    },
+    {
+      "parameter": "reference_min_lag_ms",
+      "value": 20.0,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "rationale": "Minimum allowed PPG-pulse lag (lag = ppg - pulse). Observed normal≈72-80ms."
+    },
+    {
+      "parameter": "reference_max_lag_ms",
+      "value": 140.0,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 72.0,
+        "max": 76.0,
+        "mean": 75.2
+      },
+      "rationale": "Maximum lag for a valid match. normal≈72-80ms; misalignment≈220ms falls outside and reduces match_rate."
+    },
+    {
+      "parameter": "min_ppg_match_rate",
+      "value": 0.7,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 0.5,
+        "max": 1.0,
+        "mean": 0.75
+      },
+      "rationale": "match_rate < 0.7 → reference_mismatch when reference available."
+    },
+    {
+      "parameter": "max_lag_mad_ms",
+      "value": 50.0,
+      "parameter_class": "simulation_only",
+      "observed_summary": {
+        "n": 10,
+        "min": 0.0,
+        "max": 2.0,
+        "mean": 0.2
+      },
+      "rationale": "lag MAD above threshold contributes to mismatch evidence."
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 828.0,
+      "interval_std_ms": 9.977753031397176,
+      "interval_cv": 0.01205042636642171,
+      "median_pulse_prominence": 2420.7435848838722
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 845.3333333333334,
+      "interval_std_ms": 10.498677165349081,
+      "interval_cv": 0.01241957077919844,
+      "median_pulse_prominence": 2387.4969910749405
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 72.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 828.8888888888889,
+      "interval_std_ms": 15.176329847967889,
+      "interval_cv": 0.018309245124894236,
+      "median_pulse_prominence": 2421.109936555991
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 844.4444444444445,
+      "interval_std_ms": 8.731947868617112,
+      "interval_cv": 0.010340464581257107,
+      "median_pulse_prominence": 2386.693049265041
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 2.0,
+      "interval_mean_ms": 833.7777777777778,
+      "interval_std_ms": 14.740554623801778,
+      "interval_cv": 0.017679236622363537,
+      "median_pulse_prominence": 2428.7831330920053
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "beat_count": 6,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 0.8333333333333334,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 1490.4,
+      "interval_std_ms": 1353.089738339627,
+      "interval_cv": 0.907870194806513,
+      "median_pulse_prominence": 2420.7435848838722
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "beat_count": 6,
+      "ppg_beat_count": 10,
+      "matched_count": 6,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 1521.6,
+      "interval_std_ms": 1357.2291774052014,
+      "interval_cv": 0.8919750114387497,
+      "median_pulse_prominence": 2387.4969910749405
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "beat_count": 5,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 72.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 1865.0,
+      "interval_std_ms": 1800.809540179083,
+      "interval_cv": 0.9655815228842267,
+      "median_pulse_prominence": 2421.109936555991
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "beat_count": 6,
+      "ppg_beat_count": 10,
+      "matched_count": 6,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 1520.0,
+      "interval_std_ms": 1342.008047665885,
+      "interval_cv": 0.8829000313591349,
+      "median_pulse_prominence": 2379.740352453371
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "beat_count": 6,
+      "ppg_beat_count": 10,
+      "matched_count": 6,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 2.0,
+      "interval_mean_ms": 1500.8,
+      "interval_std_ms": 1329.737177039132,
+      "interval_cv": 0.8860189079418523,
+      "median_pulse_prominence": 2431.3221918999734
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 8,
+      "ppg_match_rate": 0.8,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 2.0,
+      "interval_mean_ms": 828.0,
+      "interval_std_ms": 200.78069849686472,
+      "interval_cv": 0.24248876630056124,
+      "median_pulse_prominence": 2519.2802003436336
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 9,
+      "ppg_match_rate": 0.9,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 4.0,
+      "interval_mean_ms": 845.3333333333334,
+      "interval_std_ms": 49.17090377222873,
+      "interval_cv": 0.058167472916674366,
+      "median_pulse_prominence": 2474.09516413263
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 7,
+      "ppg_match_rate": 0.7,
+      "median_lag_ms": 72.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 828.8888888888889,
+      "interval_std_ms": 198.04177137633502,
+      "interval_cv": 0.2389243890599216,
+      "median_pulse_prominence": 2986.7740916468774
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "beat_count": 11,
+      "ppg_beat_count": 10,
+      "matched_count": 8,
+      "ppg_match_rate": 0.7272727272727273,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 2.0,
+      "interval_mean_ms": 760.0,
+      "interval_std_ms": 120.57197020866832,
+      "interval_cv": 0.158647329221932,
+      "median_pulse_prominence": 2456.4861351741947
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 4.0,
+      "interval_mean_ms": 833.7777777777778,
+      "interval_std_ms": 41.7872329725979,
+      "interval_cv": 0.05011794999378746,
+      "median_pulse_prominence": 2464.312340730914
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 74.0,
+      "lag_mad_ms": 2.0,
+      "interval_mean_ms": 828.0,
+      "interval_std_ms": 9.043106644167024,
+      "interval_cv": 0.010921626381844232,
+      "median_pulse_prominence": 2387.6303782711893
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "beat_count": 9,
+      "ppg_beat_count": 10,
+      "matched_count": 9,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 951.0,
+      "interval_std_ms": 283.3001941404206,
+      "interval_cv": 0.29789715472178824,
+      "median_pulse_prominence": 2220.30385673654
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 72.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 828.8888888888889,
+      "interval_std_ms": 15.408831842986416,
+      "interval_cv": 0.018589743510305328,
+      "median_pulse_prominence": 2371.245637119233
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "beat_count": 9,
+      "ppg_beat_count": 10,
+      "matched_count": 9,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 4.0,
+      "interval_mean_ms": 950.0,
+      "interval_std_ms": 275.98550686584974,
+      "interval_cv": 0.2905110598587892,
+      "median_pulse_prominence": 2216.6395824911815
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 10,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 2.0,
+      "interval_mean_ms": 833.7777777777778,
+      "interval_std_ms": 16.558165342397476,
+      "interval_cv": 0.01985920683389889,
+      "median_pulse_prominence": 2374.4827678559122
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "beat_count": 1,
+      "ppg_beat_count": 1,
+      "matched_count": 1,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": null,
+      "interval_std_ms": null,
+      "interval_cv": null,
+      "median_pulse_prominence": 2379.577575247302
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "beat_count": 1,
+      "ppg_beat_count": 1,
+      "matched_count": 1,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": null,
+      "interval_std_ms": null,
+      "interval_cv": null,
+      "median_pulse_prominence": 2387.4969910749405
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "beat_count": 1,
+      "ppg_beat_count": 1,
+      "matched_count": 1,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 72.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": null,
+      "interval_std_ms": null,
+      "interval_cv": null,
+      "median_pulse_prominence": 2366.663851363992
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "beat_count": 1,
+      "ppg_beat_count": 1,
+      "matched_count": 1,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": null,
+      "interval_std_ms": null,
+      "interval_cv": null,
+      "median_pulse_prominence": 2359.7584745610857
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "beat_count": 1,
+      "ppg_beat_count": 1,
+      "matched_count": 1,
+      "ppg_match_rate": 1.0,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": null,
+      "interval_std_ms": null,
+      "interval_cv": null,
+      "median_pulse_prominence": 2385.310835421942
+    },
+    {
+      "case_id": "ppg_misalignment",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "reference_mismatch",
+      "reason_codes": [
+        "reference_mismatch"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 0.5,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 828.0,
+      "interval_std_ms": 9.977753031397176,
+      "interval_cv": 0.01205042636642171,
+      "median_pulse_prominence": 2420.7435848838722
+    },
+    {
+      "case_id": "ppg_misalignment",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "reference_mismatch",
+      "reason_codes": [
+        "reference_mismatch"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 0.5,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 845.3333333333334,
+      "interval_std_ms": 10.498677165349081,
+      "interval_cv": 0.01241957077919844,
+      "median_pulse_prominence": 2387.4969910749405
+    },
+    {
+      "case_id": "ppg_misalignment",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "reference_mismatch",
+      "reason_codes": [
+        "reference_mismatch"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 0.5,
+      "median_lag_ms": 72.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 828.8888888888889,
+      "interval_std_ms": 15.176329847967889,
+      "interval_cv": 0.018309245124894236,
+      "median_pulse_prominence": 2421.109936555991
+    },
+    {
+      "case_id": "ppg_misalignment",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "reference_mismatch",
+      "reason_codes": [
+        "reference_mismatch"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 0.5,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 844.4444444444445,
+      "interval_std_ms": 8.731947868617112,
+      "interval_cv": 0.010340464581257107,
+      "median_pulse_prominence": 2386.693049265041
+    },
+    {
+      "case_id": "ppg_misalignment",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "reference_mismatch",
+      "reason_codes": [
+        "reference_mismatch"
+      ],
+      "beat_count": 10,
+      "ppg_beat_count": 10,
+      "matched_count": 5,
+      "ppg_match_rate": 0.5,
+      "median_lag_ms": 76.0,
+      "lag_mad_ms": 0.0,
+      "interval_mean_ms": 833.7777777777778,
+      "interval_std_ms": 14.740554623801778,
+      "interval_cv": 0.017679236622363537,
+      "median_pulse_prominence": 2428.7831330920053
+    }
+  ]
+}
