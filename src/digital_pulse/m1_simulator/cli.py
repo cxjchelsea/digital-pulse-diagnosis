@@ -12,6 +12,7 @@ from .artifacts import ArtifactError, dumps_compact, sha256_file
 from .attempts import get_attempt_plan, list_attempt_plans
 from .config import M1SimulatorConfigError
 from .datasource import SimulatorDataSource
+from .paths import validate_artifact_identifier
 from .recorder import M1SessionRecorder
 from .replay import ReplayDataSource
 from .scenarios import get_scenario, get_scenario_definition, list_scenarios, list_simulation_cases
@@ -80,7 +81,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USAGE
     except ArtifactError as exc:
         print(str(exc), file=sys.stderr)
-        if exc.code in {"invalid_manifest", "invalid_sample", "invalid_json", "session_mismatch"}:
+        if exc.code in {"invalid_identifier", "path_escape"}:
+            return EXIT_USAGE
+        if exc.code in {"invalid_manifest", "invalid_sample", "invalid_json", "session_mismatch", "invalid_path"}:
             return EXIT_VALIDATE if args.command == "validate" else EXIT_REPLAY
         if exc.code in {"session_exists", "plan_exists"}:
             return EXIT_WRITE
@@ -132,8 +135,13 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         if args.started_at is not None:
             overrides["started_at_utc"] = args.started_at
         config = get_scenario(args.scenario, **overrides)
-        source = SimulatorDataSource(config, session_id=args.session_id)
-        result = recorder.record(source, output_root=output_root, session_id=args.session_id)
+        session_id = (
+            validate_artifact_identifier(args.session_id, name="session_id")
+            if args.session_id is not None
+            else None
+        )
+        source = SimulatorDataSource(config, session_id=session_id)
+        result = recorder.record(source, output_root=output_root, session_id=session_id)
         summary = {
             "case_id": args.scenario,
             "case_type": "scenario",
@@ -189,9 +197,7 @@ def _cmd_replay(args: argparse.Namespace) -> int:
             "dropped_sample_count": source.session.integrity_summary.dropped_sample_count,
             "raw_persistence_status": source.session.integrity_summary.raw_persistence_status.value,
         },
-        "stream_sha256": sha256_file(Path(args.session_path) / source.session.files[1].relative_path)
-        if any(ref.role.value == "samples" for ref in source.session.files)
-        else None,
+        "stream_sha256": sha256_file(source.samples_path),
         "source_type": source.source_type,
         "validate_only": bool(args.validate_only),
     }

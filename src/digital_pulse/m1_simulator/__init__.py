@@ -35,8 +35,10 @@ from .datasource import M1DataSource, SimulatorDataSource
 from .device_faults import DeviceFaultKind, DeviceFaultPlan
 from .events import SimulationEvent
 from .faults import FaultKind, FaultWindow, SignalFaultInjector
+from .paths import safe_child_path, validate_artifact_identifier
 from .recorder import M1SessionRecorder, PlanRecordResult, SessionRecordResult
-from .replay import ReplayDataSource
+from .replay import ReplayDataSource, resolve_file_role
+from .runtime import SimulationRuntimeStats
 from .scenario_ids import NORMAL_HIGH_QUALITY
 from .scenarios import (
     ScenarioDefinition,
@@ -94,6 +96,7 @@ __all__ = [
     "SessionRecordResult",
     "SignalFaultInjector",
     "SimulationEvent",
+    "SimulationRuntimeStats",
     "SimulatorDataSource",
     "TimestampRegressionPlan",
     "TransportFaultKind",
@@ -106,4 +109,7 @@ __all__ = [
     "list_scenarios",
     "list_simulation_cases",
     "list_single_attempt_scenarios",
+    "resolve_file_role",
+    "safe_child_path",
+    "validate_artifact_identifier",
 ]

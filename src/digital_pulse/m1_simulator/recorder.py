@@ -38,11 +38,10 @@ from .artifacts import (
 )
 from .attempts import MultiAttemptPlan
 from .capture import PersistenceWriteError
-from .config import ScenarioConfig
 from .datasource import SimulatorDataSource
 from .events import EventRecorder, SimulationEvent
+from .paths import safe_child_path, validate_artifact_identifier
 from .scenarios import ScenarioDefinition, get_scenario_definition
-from .transport import FrameLossPlan
 from .versions import ARTIFACT_FORMAT_VERSION, RECORDER_VERSION
 
 
@@ -89,9 +88,9 @@ class M1SessionRecorder:
         definition = definition or get_scenario_definition(config.scenario_id)
         # Manifest/sample session_id stays equal to the datasource session_id unless
         # the caller also constructed the source with the same explicit session_id.
-        sid = session_id or source.session_id
-        dir_name = directory_name or sid
-        session_dir = Path(output_root) / dir_name
+        sid = validate_artifact_identifier(session_id or source.session_id, name="session_id")
+        dir_name = validate_artifact_identifier(directory_name or sid, name="directory_name")
+        session_dir = safe_child_path(Path(output_root), dir_name, name="directory_name")
         if session_dir.exists():
             raise ArtifactError("session_exists", f"session directory already exists: {session_dir}")
         session_dir.mkdir(parents=True, exist_ok=False)
@@ -116,24 +115,33 @@ class M1SessionRecorder:
         event_recorder = EventRecorder()
         event_recorder.emit("session_started", session_id=sid, scenario_id=config.scenario_id)
 
-        with partial_path.open("w", encoding="utf-8", newline="\n") as sample_fh:
-            try:
-                for sample in source.samples():
-                    if fail_after is not None and len(persisted) >= fail_after:
-                        raise PersistenceWriteError("raw_persistence_failure", "injected raw persistence failure")
-                    sample.validate_schema()
-                    sample_fh.write(dumps_compact(to_canonical_dict(sample)) + "\n")
-                    sample_fh.flush()
-                    persisted.append(sample)
-            except PersistenceWriteError as exc:
-                persistence_failed = True
-                event_recorder.emit(
-                    "persistence_failure",
-                    failure_code=exc.code,
-                    persisted_sample_count=len(persisted),
-                )
+        sample_iter = iter(source.samples())
+        try:
+            with partial_path.open("w", encoding="utf-8", newline="\n") as sample_fh:
+                try:
+                    for sample in sample_iter:
+                        if fail_after is not None and len(persisted) >= fail_after:
+                            raise PersistenceWriteError(
+                                "raw_persistence_failure",
+                                "injected raw persistence failure",
+                            )
+                        sample.validate_schema()
+                        sample_fh.write(dumps_compact(to_canonical_dict(sample)) + "\n")
+                        sample_fh.flush()
+                        persisted.append(sample)
+                except PersistenceWriteError as exc:
+                    persistence_failed = True
+                    event_recorder.emit(
+                        "persistence_failure",
+                        failure_code=exc.code,
+                        persisted_sample_count=len(persisted),
+                    )
+        finally:
+            close = getattr(sample_iter, "close", None)
+            if close is not None:
+                close()
 
-        # Merge datasource runtime events after samples() exhausts.
+        # Merge datasource runtime events after samples() exhausts or is closed.
         runtime_events = list(source.events())
         for event in runtime_events:
             event_recorder.emit(
@@ -156,9 +164,15 @@ class M1SessionRecorder:
         events = event_recorder.events()
         self._write_events(events_path, events)
 
-        dropped = self._dropped_count(config, events)
+        runtime = source.runtime_stats()
+        dropped = int(runtime.transport_dropped_samples)
         status = RawPersistenceStatus.FAILED if persistence_failed else RawPersistenceStatus.OK
-        integrity = compute_integrity(persisted, dropped_sample_count=dropped, raw_persistence_status=status)
+        integrity = compute_integrity(
+            persisted,
+            dropped_sample_count=dropped,
+            raw_persistence_status=status,
+            initial_frame_sequence=config.initial_frame_sequence,
+        )
 
         samples_name = "samples.partial.jsonl" if persistence_failed else "samples.jsonl"
         if not persistence_failed:
@@ -236,7 +250,8 @@ class M1SessionRecorder:
         *,
         output_root: Path,
     ) -> PlanRecordResult:
-        plan_dir = Path(output_root) / plan.plan_id
+        plan_id = validate_artifact_identifier(plan.plan_id, name="plan_id")
+        plan_dir = safe_child_path(Path(output_root), plan_id, name="plan_id")
         if plan_dir.exists():
             raise ArtifactError("plan_exists", f"plan directory already exists: {plan_dir}")
         attempts_root = plan_dir / "attempts"
@@ -263,6 +278,9 @@ class M1SessionRecorder:
                     "session_id": result.session_id,
                     "relative_path": relative,
                     "configuration_digest": result.configuration_digest,
+                    "completed": result.completed,
+                    "completion_reason": result.completion_reason,
+                    "sample_count": result.sample_count,
                 }
             )
 
@@ -273,11 +291,11 @@ class M1SessionRecorder:
         plan_doc = {
             "artifact_version": ARTIFACT_FORMAT_VERSION,
             "artifact_role": "simulator_plan",
-            "plan_id": plan.plan_id,
+            "plan_id": plan_id,
             "plan_version": plan.plan_version,
-            "case_id": plan.plan_id,
+            "case_id": plan_id,
             "max_attempts": plan.max_attempts,
-            "attempt_count": len(plan.attempts),
+            "attempt_count": len(attempt_results),
             "attempts": attempt_entries,
             "expected_final_quality": plan.expected_quality_label.value,
             "expected_final_action": plan.expected_int_action.value,
@@ -293,7 +311,7 @@ class M1SessionRecorder:
         validate_plan_artifact(plan_doc)
         write_text_atomic(plan_dir / "plan.json", dumps_compact(plan_doc) + "\n")
         return PlanRecordResult(
-            plan_id=plan.plan_id,
+            plan_id=plan_id,
             plan_path=plan_dir,
             attempt_results=tuple(attempt_results),
             expected_completion=plan.expected_completion,
@@ -305,14 +323,3 @@ class M1SessionRecorder:
                 row = event_to_artifact_row(event)
                 validate_event_artifact(row)
                 handle.write(dumps_compact(row) + "\n")
-
-    @staticmethod
-    def _dropped_count(config: ScenarioConfig, events: tuple[SimulationEvent, ...]) -> int:
-        from_events = sum(1 for event in events if event.kind == "frame_loss")
-        if from_events:
-            return from_events
-        total = 0
-        for plan in config.transport_fault_schedule:
-            if isinstance(plan, FrameLossPlan):
-                total += plan.lost_frame_count
-        return total
