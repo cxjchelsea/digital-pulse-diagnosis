@@ -16,6 +16,7 @@ from .models import (
     StableWindowResult,
 )
 from .normalization import InputNormalizer, RawIdentityConverter
+from .observations import SequenceObservations, TimestampObservations, observe_sequence, observe_timestamps
 from .parameters import (
     SP_PARAMETER_VERSION,
     SP_PROCESSING_VERSION,
@@ -39,6 +40,10 @@ __all__ = [
     "NormalizedSession",
     "ProcessingEvidence",
     "RawIdentityConverter",
+    "SequenceObservations",
+    "TimestampObservations",
+    "observe_sequence",
+    "observe_timestamps",
     "SPParameter",
     "SPParameterClass",
     "SPParameterSet",

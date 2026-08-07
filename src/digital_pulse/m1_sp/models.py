@@ -88,6 +88,9 @@ class IntegrityAnalysis:
     consistency: IntegrityConsistency
     evidence: tuple[ProcessingEvidence, ...]
     blocking_codes: tuple[str, ...] = ()
+    # SP-observed anomaly masks (bool per sample); windows must split on these.
+    sequence_anomaly_mask: tuple[bool, ...] = ()
+    timestamp_anomaly_mask: tuple[bool, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

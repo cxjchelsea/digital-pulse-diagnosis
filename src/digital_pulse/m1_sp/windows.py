@@ -32,7 +32,13 @@ class StableWindowSelector:
             # P2A structural path keeps gap allowance at zero.
             max_gap = 0
 
-        candidate = _candidate_mask(normalized, stable_states, excluded_states)
+        candidate = _candidate_mask(
+            normalized,
+            stable_states,
+            excluded_states,
+            sequence_anomaly_mask=integrity.sequence_anomaly_mask,
+            timestamp_anomaly_mask=integrity.timestamp_anomaly_mask,
+        )
         runs = _contiguous_runs(candidate, max_gap=max_gap)
         windows: list[StableWindow] = []
         evidence: list[ProcessingEvidence] = []
@@ -109,6 +115,9 @@ def _candidate_mask(
     normalized: NormalizedSession,
     stable_states: set[str],
     excluded_states: set[str],
+    *,
+    sequence_anomaly_mask: tuple[bool, ...] = (),
+    timestamp_anomaly_mask: tuple[bool, ...] = (),
 ) -> list[bool]:
     mask: list[bool] = []
     n = normalized.sample_count
@@ -136,10 +145,16 @@ def _candidate_mask(
         if normalized.timestamp_valid[i] == TRI_FALSE:
             mask.append(False)
             continue
+        # SP-observed anomalies (gap/duplicate/regression/non-strict time) must split windows
+        # even when upstream receive_integrity flags remain true/unknown.
+        if sequence_anomaly_mask and sequence_anomaly_mask[i]:
+            mask.append(False)
+            continue
+        if timestamp_anomaly_mask and timestamp_anomaly_mask[i]:
+            mask.append(False)
+            continue
         # PPG invalid must not kill the pulse/load structural window.
         mask.append(True)
-    # Also split on visible frame gaps: sample after gap already has sequence_valid=false
-    # from P1 transport, so mask handles it.
     return mask
 
 

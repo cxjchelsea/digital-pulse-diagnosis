@@ -22,6 +22,12 @@ from .models import (
     ProcessingEvidence,
 )
 from .normalization import TRI_FALSE, TRI_UNKNOWN
+from .observations import (
+    combined_sequence_error_mask,
+    combined_timestamp_error_mask,
+    observe_sequence,
+    observe_timestamps,
+)
 
 
 TERMINAL_BLOCK_STATES = frozenset({"FAULT", "SAFE_HOLD"})
@@ -59,13 +65,17 @@ class IntegrityAnalyzer:
                 )
             )
 
-        sequence_error_count = int(np.count_nonzero(normalized.sequence_valid == TRI_FALSE))
-        missing_frame_count = _visible_missing_frames(normalized.frame_sequence)
-        if sequence_error_count or missing_frame_count:
-            gap_indices = _gap_after_indices(normalized.frame_sequence)
-            # Leading frame loss: first sample may carry sequence_valid=false without an interior gap.
-            if not gap_indices and sequence_error_count:
-                gap_indices = [int(i) for i in np.flatnonzero(normalized.sequence_valid == TRI_FALSE)]
+        seq_obs = observe_sequence(normalized.frame_sequence)
+        seq_mask = combined_sequence_error_mask(normalized, seq_obs)
+        sequence_error_count = int(np.count_nonzero(seq_mask))
+        missing_frame_count = seq_obs.missing_frame_count
+        upstream_seq_false = [int(i) for i in np.flatnonzero(normalized.sequence_valid == TRI_FALSE)]
+
+        if seq_obs.gap_indices or (upstream_seq_false and not seq_obs.duplicate_indices and not seq_obs.regression_indices):
+            gap_indices = list(seq_obs.gap_indices)
+            if not gap_indices and upstream_seq_false:
+                # Leading frame loss: first visible sample may only carry upstream flag.
+                gap_indices = upstream_seq_false
             evidence.append(
                 ProcessingEvidence(
                     code="FRAME_SEQUENCE_GAP",
@@ -77,6 +87,7 @@ class IntegrityAnalyzer:
                         "sequence_error_count": sequence_error_count,
                         "visible_missing_frame_count": missing_frame_count,
                         "gap_after_indices": gap_indices,
+                        "upstream_sequence_valid_false": upstream_seq_false,
                         "note": (
                             "SP sample-observed missing count cannot reconstruct "
                             "invisible leading/trailing drops without session provenance."
@@ -84,14 +95,85 @@ class IntegrityAnalyzer:
                     },
                 )
             )
+        if seq_obs.duplicate_indices:
+            evidence.append(
+                ProcessingEvidence(
+                    code="FRAME_SEQUENCE_DUPLICATE",
+                    severity="error",
+                    start_index=seq_obs.duplicate_indices[0],
+                    end_index=seq_obs.duplicate_indices[-1] + 1,
+                    observed_value=len(seq_obs.duplicate_indices),
+                    details={"indices": list(seq_obs.duplicate_indices)},
+                )
+            )
+        if seq_obs.regression_indices:
+            evidence.append(
+                ProcessingEvidence(
+                    code="FRAME_SEQUENCE_REGRESSION",
+                    severity="error",
+                    start_index=seq_obs.regression_indices[0],
+                    end_index=seq_obs.regression_indices[-1] + 1,
+                    observed_value=len(seq_obs.regression_indices),
+                    details={"indices": list(seq_obs.regression_indices)},
+                )
+            )
 
-        timestamp_error_count = _timestamp_error_count(normalized)
-        if timestamp_error_count:
+        ts_obs = observe_timestamps(normalized.device_time_us)
+        ts_mask = combined_timestamp_error_mask(normalized, ts_obs)
+        timestamp_error_count = int(np.count_nonzero(ts_mask))
+        upstream_ts_false = [int(i) for i in np.flatnonzero(normalized.timestamp_valid == TRI_FALSE)]
+
+        if ts_obs.duplicate_indices:
+            evidence.append(
+                ProcessingEvidence(
+                    code="TIMESTAMP_DUPLICATE",
+                    severity="error",
+                    start_index=ts_obs.duplicate_indices[0],
+                    end_index=ts_obs.duplicate_indices[-1] + 1,
+                    observed_value=len(ts_obs.duplicate_indices),
+                    details={"indices": list(ts_obs.duplicate_indices)},
+                )
+            )
+        if ts_obs.regression_indices or (
+            upstream_ts_false and not ts_obs.duplicate_indices and not ts_obs.regression_indices
+        ):
+            reg_indices = list(ts_obs.regression_indices) or upstream_ts_false
+            evidence.append(
+                ProcessingEvidence(
+                    code="TIMESTAMP_REGRESSION",
+                    severity="error",
+                    start_index=reg_indices[0] if reg_indices else None,
+                    end_index=(reg_indices[-1] + 1) if reg_indices else None,
+                    observed_value=len(reg_indices),
+                    details={
+                        "indices": reg_indices,
+                        "upstream_timestamp_valid_false": upstream_ts_false,
+                    },
+                )
+            )
+        if timestamp_error_count and not (
+            ts_obs.duplicate_indices or ts_obs.regression_indices or upstream_ts_false
+        ):
+            # Defensive aggregate path (should be unreachable).
             evidence.append(
                 ProcessingEvidence(
                     code="TIMESTAMP_ERROR",
                     severity="error",
                     observed_value=timestamp_error_count,
+                )
+            )
+        elif timestamp_error_count:
+            # Keep a stable aggregate code for existing tests / P2B projection mapping.
+            evidence.append(
+                ProcessingEvidence(
+                    code="TIMESTAMP_ERROR",
+                    severity="error",
+                    observed_value=timestamp_error_count,
+                    details={
+                        "duplicate_count": len(ts_obs.duplicate_indices),
+                        "regression_count": len(ts_obs.regression_indices),
+                        "upstream_false_count": len(upstream_ts_false),
+                    },
                 )
             )
 
@@ -208,44 +290,9 @@ class IntegrityAnalyzer:
             consistency=consistency,
             evidence=evidence_sorted,
             blocking_codes=tuple(sorted(set(blocking))),
+            sequence_anomaly_mask=tuple(bool(v) for v in seq_mask),
+            timestamp_anomaly_mask=tuple(bool(v) for v in ts_mask),
         )
-
-
-def _visible_missing_frames(frame_sequence) -> int:
-    if frame_sequence.shape[0] == 0:
-        return 0
-    missing = 0
-    previous = int(frame_sequence[0])
-    for value in frame_sequence[1:]:
-        current = int(value)
-        if current > previous + 1:
-            missing += current - previous - 1
-        previous = current
-    return missing
-
-
-def _gap_after_indices(frame_sequence) -> list[int]:
-    gaps: list[int] = []
-    if frame_sequence.shape[0] == 0:
-        return gaps
-    previous = int(frame_sequence[0])
-    for index in range(1, int(frame_sequence.shape[0])):
-        current = int(frame_sequence[index])
-        if current > previous + 1:
-            gaps.append(index)
-        previous = current
-    return gaps
-
-
-def _timestamp_error_count(normalized: NormalizedSession) -> int:
-    count = int(np.count_nonzero(normalized.timestamp_valid == TRI_FALSE))
-    previous: int | None = None
-    for i in range(normalized.sample_count):
-        t = int(normalized.device_time_us[i])
-        if previous is not None and t < previous and normalized.timestamp_valid[i] != TRI_FALSE:
-            count += 1
-        previous = t
-    return count
 
 
 def _cross_check(
