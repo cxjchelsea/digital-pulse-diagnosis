@@ -18,6 +18,7 @@ from .config import ScenarioConfig
 from .device_faults import DeviceFaultController
 from .events import EventRecorder, SimulationEvent
 from .faults import SignalFaultInjector
+from .runtime import SimulationRuntimeStats
 from .timeline import BeatTimeline, derive_rng_streams
 from .transport import TransportFaultInjector
 
@@ -46,6 +47,7 @@ class SimulatorDataSource:
         self._session_id = session_id or f"sim-{config.scenario_id}-{digest[:16]}"
         self._digest = digest
         self._last_events: tuple[SimulationEvent, ...] = ()
+        self._last_runtime_stats = SimulationRuntimeStats()
 
     @property
     def source_type(self) -> str:
@@ -64,8 +66,12 @@ class SimulatorDataSource:
         return self._digest
 
     def events(self) -> tuple[SimulationEvent, ...]:
-        """Return events from the most recent exhausted ``samples()`` regeneration."""
+        """Return events from the most recent exhausted or closed ``samples()`` run."""
         return self._last_events
+
+    def runtime_stats(self) -> SimulationRuntimeStats:
+        """Return observed stats from the most recent exhausted or closed ``samples()`` run."""
+        return self._last_runtime_stats
 
     def samples(self) -> Iterator[M1Sample]:
         streams = derive_rng_streams(self._config.random_seed)
@@ -87,6 +93,8 @@ class SimulatorDataSource:
             if isinstance(self._config.parameter_status, ParameterStatus)
             else str(self._config.parameter_status)
         )
+        yielded = 0
+        terminal_reason: str | None = None
         try:
             for tick in clock.iter_ticks():
                 # Always advance channel RNGs for this frame so dropped frames keep
@@ -137,8 +145,17 @@ class SimulatorDataSource:
                 )
                 sample.validate()
                 transport.mark_emitted(tick.frame_sequence)
+                yielded += 1
                 yield sample
                 if device_action.terminate_after:
+                    terminal_reason = device_action.device_state
                     break
         finally:
             self._last_events = events.events()
+            self._last_runtime_stats = SimulationRuntimeStats(
+                yielded_samples=yielded,
+                transport_dropped_samples=transport.dropped_sample_count,
+                sequence_integrity_failures=transport.sequence_integrity_failures,
+                timestamp_integrity_failures=transport.timestamp_integrity_failures,
+                terminal_reason=terminal_reason,
+            )
