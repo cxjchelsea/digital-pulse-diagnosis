@@ -1,6 +1,6 @@
 # M1-P2 SP-S1-pre信号处理预实现实施方案
 
-版本：0.1.1；状态：M1-P2A已实现（`m1_sp`）；P2B/P2C/P2D未开始。
+版本：0.1.2；状态：M1-P2A/P2B已实现（`m1_sp`）；P2C/P2D未开始。
 
 ## 1. 阶段定位
 
@@ -168,8 +168,10 @@ P2A职责：
 | normalization | M1Sample→NormalizedSession，保留mask和时间（P2A） |
 | integrity | CRC/sequence/timestamp/sensor/session完整性（P2A） |
 | windows | 结构性稳定窗口（P2A） |
-| processor | `SPPreprocessor` 入口（P2A；P2D再扩展正式`SPProcessor`） |
-| metrics / filters / beats / quality | P2B/P2C 后续 |
+| processor | `SPPreprocessor`（P2A）+ `SPQualityProcessor`（P2B；P2D再扩展正式`SPProcessor`） |
+| metrics / quality / projection | P2B raw指标、规则分类、`M1QualityResult`投影 |
+| observations | P2A Final Review：观测序列/时间戳异常 |
+| filters / beats | P2C 后续 |
 
 ## 7. 内部数据模型
 
@@ -397,18 +399,17 @@ blocked_before_quality
 - structural / oracle-isolation tests；
 - **不生成**最终质量分类 / `M1QualityResult`。
 
-### M1-P2B：raw质量指标与规则分类
+### M1-P2B：raw质量指标与规则分类（已完成）
 
-完成：
+已完成：
 
-- clipping；
-- no contact；
-- weak；
-- baseline drift；
-- motion；
-- unstable load内部证据；
-- M1QualityProjector；
-- simulation-only参数冻结。
+- `RawQualityMetrics` / `QualityMetricsInternal`（valid/clipping/std/baseline/motion/load）；
+- `default_p2b_parameter_set()`：simulation-only 阈值经多 seed 表征冻结；P2A digest 兼容；
+- `QualityEvaluator` 优先级与 integrity/safety 分流（`sensor_disconnected`→integrity，abort/device_fault→blocked）；
+- `M1QualityProjector` → 正式 `M1QualityResult`（`score/confidence=null`，`parameter_status=synthetic_only`）；
+- `SPQualityStageResult` 阶段性结果（非最终 P2D `SPProcessingResult`）；
+- characterization fixture：`tests/fixtures/m1_sp/p2b_characterization.json`；
+- **未实现**滤波 / 逐搏 / PPG / `reference_mismatch` / formal M1-P2 acceptance。
 
 ### M1-P2C：滤波、逐搏与PPG对齐
 

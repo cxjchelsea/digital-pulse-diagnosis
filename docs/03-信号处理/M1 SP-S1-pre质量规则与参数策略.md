@@ -361,17 +361,20 @@ pulse valid samples
 
 ### baseline_drift_raw
 
-P2B必须从候选定义中选择并冻结一种，例如：
+P2B已冻结 `baseline_drift_raw:v1`（segment-median excursion）：
 
 ```text
-median(last segment) - median(first segment)
+seg_n = max(minimum_segment_samples, round(N * segment_fraction))
+medians = median of each full contiguous segment
+earlier, later = ordered indices of argmin/argmax(medians)
+baseline_drift_raw = median[later] - median[earlier]
 ```
 
-一旦fixture建立，不得无版本更新地改变公式。
+阈值比较使用 `abs(baseline_drift_raw)`。选择该公式是因为合成 baseline 场景为中部 envelope 漂移，first/last median 差无稳定 margin。一旦 fixture 建立，不得无版本更新地改变公式。
 
 ### pulse_std_raw
 
-使用有效raw pulse样本的population/std定义必须固定（`ddof=0`或`ddof=1`二选一并测试）。
+P2B冻结：`np.std(valid_raw_pulse, ddof=0)`（population std）。
 
 ### beat_count
 

@@ -33,7 +33,7 @@ flowchart LR
 M1-P真实接入前软件就绪（主要实施）
 ├─ M1-P0 数据契约与Schema（已完成）
 ├─ M1-P1 多通道真实风格模拟器（已完成并合并）
-├─ M1-P2 SP-S1-pre信号处理（P2A已完成；P2B未开始）
+├─ M1-P2 SP-S1-pre信号处理（P2A/P2B已完成；P2C未开始）
 ├─ M1-P3 APP-A1-pre分析软件
 ├─ M1-P4 INT-I1-pre决策规则
 ├─ M1-P5 模拟场景与验收矩阵
