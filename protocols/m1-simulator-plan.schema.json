@@ -39,7 +39,10 @@
           "scenario_id",
           "session_id",
           "relative_path",
-          "configuration_digest"
+          "configuration_digest",
+          "completed",
+          "completion_reason",
+          "sample_count"
         ],
         "properties": {
           "attempt_index": { "type": "integer", "minimum": 1 },
@@ -49,7 +52,12 @@
           "configuration_digest": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
-          }
+          },
+          "completed": { "type": "boolean" },
+          "completion_reason": {
+            "type": ["string", "null"]
+          },
+          "sample_count": { "type": "integer", "minimum": 0 }
         }
       }
     },

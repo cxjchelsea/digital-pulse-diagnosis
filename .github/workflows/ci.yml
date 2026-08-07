@@ -56,6 +56,8 @@ jobs:
           assert d.get('multi_attempt_cases') == 2;
           assert d.get('replay_verified') is True;
           assert d.get('golden_summaries_verified') is True;
+          assert d.get('d3_regression_passed') is True;
+          assert d.get('d3_regression_skipped') is False;
           assert d.get('failed_gates') == []"
 
       - name: Upload D3 acceptance artifacts
