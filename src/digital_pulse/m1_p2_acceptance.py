@@ -11,6 +11,8 @@ import shutil
 import tempfile
 from typing import Any
 
+import numpy as np
+
 from digital_pulse.m1_contracts import SourceType
 
 from digital_pulse.m1_simulator import (
@@ -29,9 +31,11 @@ from digital_pulse.m1_sp import (
     P2C_CONFIGURATION_DIGEST,
     SPProcessingProvenance,
     SPProcessor,
+    SP_RESULT_FINGERPRINT_VERSION,
     RawIdentityConverter,
     canonical_json_bytes,
     compare_sp_results,
+    sp_result_sha256,
     summarize_sp_result,
 )
 
@@ -171,6 +175,108 @@ def _oracle_isolated(source_root: Path) -> bool:
     return True
 
 
+def _semantic_fingerprint_coverage(result) -> dict[str, Any]:
+    def rehash(value):
+        return replace(value, result_sha256=sp_result_sha256(value))
+
+    def detects(value) -> bool:
+        changed = rehash(value)
+        return (
+            changed.result_sha256 != result.result_sha256
+            and not compare_sp_results(result, changed)
+        )
+
+    integrity = replace(result.integrity, missing_frame_count=result.integrity.missing_frame_count + 1)
+    preprocessing = replace(result.stage_result.preprocessing, integrity=integrity)
+    integrity_changed = replace(
+        result,
+        stage_result=replace(result.stage_result, preprocessing=preprocessing),
+    )
+
+    beats_removed = replace(
+        result,
+        stage_result=replace(result.stage_result, beats_by_window={}),
+    )
+    references_removed = replace(
+        result,
+        stage_result=replace(result.stage_result, reference_by_window={}),
+    )
+
+    peak_detected = False
+    if result.beats_by_window:
+        window_id, analysis = next(iter(result.beats_by_window.items()))
+        if analysis.candidates:
+            candidate = analysis.candidates[0]
+            candidates = (
+                replace(candidate, peak_device_time_us=candidate.peak_device_time_us + 1),
+                *analysis.candidates[1:],
+            )
+            beats = dict(result.beats_by_window)
+            beats[window_id] = replace(analysis, candidates=candidates)
+            peak_detected = detects(
+                replace(
+                    result,
+                    stage_result=replace(result.stage_result, beats_by_window=beats),
+                )
+            )
+
+    reference_pair_detected = False
+    if result.reference_by_window:
+        window_id, reference = next(iter(result.reference_by_window.items()))
+        if reference.matched_pairs:
+            pulse_index, ppg_index, lag_ms = reference.matched_pairs[0]
+            pairs = ((pulse_index, ppg_index + 1, lag_ms), *reference.matched_pairs[1:])
+            references = dict(result.reference_by_window)
+            references[window_id] = replace(reference, matched_pairs=pairs)
+            reference_pair_detected = detects(
+                replace(
+                    result,
+                    stage_result=replace(result.stage_result, reference_by_window=references),
+                )
+            )
+
+    filter_detected = False
+    if result.filter_views_by_window:
+        window_id, views = next(iter(result.filter_views_by_window.items()))
+        offline = views.get("offline_review")
+        if offline is not None:
+            values = np.array(offline.values, copy=True)
+            finite = np.flatnonzero(np.isfinite(values))
+            if finite.size:
+                values[int(finite[0])] += 1.0
+                changed_views = dict(views)
+                changed_views["offline_review"] = replace(offline, values=values)
+                filters = dict(result.filter_views_by_window)
+                filters[window_id] = changed_views
+                filter_detected = detects(
+                    replace(
+                        result,
+                        stage_result=replace(result.stage_result, filter_views_by_window=filters),
+                    )
+                )
+
+    provenance_changed = replace(
+        result,
+        software_commit_sha=("d" * 40 if result.software_commit_sha != "d" * 40 else "e" * 40),
+        session_id=f"{result.session_id}-container-copy",
+    )
+    provenance_excluded = (
+        sp_result_sha256(provenance_changed) == result.result_sha256
+        and compare_sp_results(result, provenance_changed)
+    )
+
+    return {
+        "version": SP_RESULT_FINGERPRINT_VERSION,
+        "integrity_drift_detected": detects(integrity_changed),
+        "filter_drift_detected": filter_detected,
+        "beat_removal_detected": detects(beats_removed),
+        "peak_time_drift_detected": peak_detected,
+        "reference_removal_detected": detects(references_removed),
+        "reference_pair_drift_detected": reference_pair_detected,
+        "execution_provenance_excluded": provenance_excluded,
+    }
+
+
 def run_m1_p2_acceptance(
     *,
     golden_path: Path,
@@ -202,6 +308,7 @@ def run_m1_p2_acceptance(
     window_checks: list[bool] = []
     causal_filter_checks: list[bool] = []
     offline_filter_checks: list[bool] = []
+    semantic_fingerprint_coverage: dict[str, Any] = {}
 
     with tempfile.TemporaryDirectory(prefix="m1-p2-acceptance-") as temporary:
         root = Path(temporary)
@@ -213,6 +320,8 @@ def run_m1_p2_acceptance(
                 software_commit_sha,
             )
             result = outcome["direct"]
+            if scenario_id == "normal_high_quality":
+                semantic_fingerprint_coverage = _semantic_fingerprint_coverage(result)
             single[scenario_id] = outcome["summary"]
             direct_replay_checks.append(outcome["direct_replay_match"])
             determinism_checks.append(outcome["deterministic_repeat_match"])
@@ -344,6 +453,21 @@ def run_m1_p2_acceptance(
     engineering_view = RawIdentityConverter().describe_pulse(1.0)
     gates = {
         "workspace_clean": bool(workspace_clean),
+        "semantic_fingerprint_complete": (
+            semantic_fingerprint_coverage.get("version") == SP_RESULT_FINGERPRINT_VERSION
+            and all(
+                semantic_fingerprint_coverage.get(key) is True
+                for key in (
+                    "integrity_drift_detected",
+                    "filter_drift_detected",
+                    "beat_removal_detected",
+                    "peak_time_drift_detected",
+                    "reference_removal_detected",
+                    "reference_pair_drift_detected",
+                    "execution_provenance_excluded",
+                )
+            )
+        ),
         "m1_contracts_unchanged": bool(m1_contracts_unchanged),
         "parameter_profile_valid": processor.parameters.configuration_digest == P2C_CONFIGURATION_DIGEST,
         "input_normalization_valid": bool(single),
@@ -432,6 +556,8 @@ def run_m1_p2_acceptance(
         "d3_regression_passed": gates["d3_regression_passed"],
         "m1_p1_regression_passed": gates["m1_p1_regression_passed"],
         "software_commit_sha": software_commit_sha,
+        "semantic_fingerprint_version": SP_RESULT_FINGERPRINT_VERSION,
+        "semantic_fingerprint_coverage": semantic_fingerprint_coverage,
         "processing": {
             "processing_version": processor.processing_version,
             "parameter_version": processor.parameters.parameter_version,

@@ -70,6 +70,9 @@ from .quality import (
 )
 from .reference import PPGDetector, ReferenceAligner, ReferenceMatchSummary, analyze_reference
 from .summary import (
+    SP_RESULT_EXCLUDED_FIELDS,
+    SP_RESULT_FINGERPRINT_VERSION,
+    SP_RESULT_SEMANTIC_FIELDS,
     canonical_json_bytes,
     compare_sp_results,
     sp_result_fingerprint,
@@ -95,6 +98,9 @@ __all__ = [
     "SP_PROCESSING_VERSION_P2B",
     "SP_PROCESSING_VERSION_P2C",
     "SP_PROCESSING_VERSION_P2D",
+    "SP_RESULT_EXCLUDED_FIELDS",
+    "SP_RESULT_FINGERPRINT_VERSION",
+    "SP_RESULT_SEMANTIC_FIELDS",
     "BeatAnalysis",
     "BeatCandidate",
     "BeatDetector",

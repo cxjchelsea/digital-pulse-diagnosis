@@ -12,6 +12,34 @@ import numpy as np
 
 from .models import SPProcessingResult
 
+SP_RESULT_FINGERPRINT_VERSION = "sp-result-fingerprint:v2"
+
+# Explicit top-level inventory: additions to SPProcessingResult must be assigned
+# deliberately to one of these sets instead of silently entering or escaping the
+# semantic hash.
+SP_RESULT_SEMANTIC_FIELDS = frozenset(
+    {
+        "source_type",
+        "processing_status",
+        "quality_results",
+        "blocking_codes",
+        "limitations",
+        "processing_version",
+        "parameter_version",
+        "parameter_status",
+        "configuration_digest",
+        "engineering_unit_conversion",
+        "stage_result",
+    }
+)
+SP_RESULT_EXCLUDED_FIELDS = frozenset(
+    {
+        "session_id",  # container identity, not algorithm output
+        "software_commit_sha",  # execution/code provenance
+        "result_sha256",  # derived from this payload
+    }
+)
+
 
 def canonical_json_bytes(value: Any) -> bytes:
     return (
@@ -52,7 +80,13 @@ def _canonical(value: Any) -> Any:
 
 
 def sp_result_fingerprint(result: SPProcessingResult) -> dict[str, Any]:
-    """Canonical semantic payload, excluding code and transport provenance."""
+    """Complete machine-semantic payload with explicit provenance exclusions.
+
+    The normalized input snapshot is not repeated: session/container identity,
+    host receive timestamps, and transport-reader provenance are inputs rather
+    than SP output. Its semantic consequences are represented by integrity,
+    windows, metrics, filters, beats, references, and formal quality results.
+    """
 
     quality_results = [
         {
@@ -68,15 +102,41 @@ def sp_result_fingerprint(result: SPProcessingResult) -> dict[str, Any]:
         for item in result.quality_results
     ]
 
+    stage = result.stage_result
+    preprocessing = stage.preprocessing
     return {
+        "fingerprint_version": SP_RESULT_FINGERPRINT_VERSION,
+        "source_type": result.source_type.value,
         "processing_status": result.processing_status,
         "quality_results": quality_results,
-        "windows": _canonical(result.windows),
         "blocking_codes": list(result.blocking_codes),
+        "limitations": list(result.limitations),
         "processing_version": result.processing_version,
         "parameter_version": result.parameter_version,
         "parameter_status": result.parameter_status.value,
         "configuration_digest": result.configuration_digest,
+        "engineering_unit_conversion": _canonical(result.engineering_unit_conversion),
+        "stage_result": {
+            "processing_status": stage.processing_status,
+            "quality_results": _canonical(stage.quality_results),
+            "blocking_codes": list(stage.blocking_codes),
+            "processing_version": stage.processing_version,
+            "parameter_version": stage.parameter_version,
+            "parameter_status": stage.parameter_status.value,
+            "configuration_digest": stage.configuration_digest,
+            "preprocessing": {
+                "integrity": _canonical(preprocessing.integrity),
+                "windows": _canonical(preprocessing.windows),
+                "processing_version": preprocessing.processing_version,
+                "parameter_version": preprocessing.parameter_version,
+                "parameter_digest": preprocessing.parameter_digest,
+            },
+            "metrics_by_window": _canonical(stage.metrics_by_window),
+            "evaluations_by_window": _canonical(stage.evaluations_by_window),
+            "filter_views_by_window": _canonical(stage.filter_views_by_window),
+            "beats_by_window": _canonical(stage.beats_by_window),
+            "reference_by_window": _canonical(stage.reference_by_window),
+        },
     }
 
 
@@ -118,6 +178,7 @@ def summarize_sp_result(result: SPProcessingResult) -> dict[str, Any]:
             }
         )
     return {
+        "fingerprint_version": SP_RESULT_FINGERPRINT_VERSION,
         "processing_status": result.processing_status,
         "blocking_codes": list(result.blocking_codes),
         "window_ids": [window.window_id for window in result.windows],
