@@ -60,11 +60,34 @@ jobs:
           assert d.get('d3_regression_skipped') is False;
           assert d.get('failed_gates') == []"
 
+      - name: Run M1-P2 formal acceptance
+        run: python scripts/generate_m1_p2_acceptance.py
+
+      - name: Assert M1-P2 formal acceptance
+        run: >
+          python -c "import json; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p2-acceptance.json').read_text(encoding='utf-8'));
+          assert d.get('formal_acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('scenario_registry', {}).get('single_attempt_count') == 16;
+          assert d.get('scenario_registry', {}).get('multi_attempt_count') == 2;
+          assert d.get('scenario_registry', {}).get('total_case_count') == 18;
+          assert d.get('replay', {}).get('verified') is True;
+          assert d.get('determinism', {}).get('verified') is True;
+          assert d.get('golden', {}).get('matched') is True;
+          assert d.get('oracle', {}).get('production_oracle_isolated') is True"
+
       - name: Upload D3 acceptance artifacts
         uses: actions/upload-artifact@v4
         with:
           name: d3-acceptance
           path: artifacts/d3-acceptance/
+
+      - name: Upload M1-P2 acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-p2-acceptance
+          path: artifacts/acceptance/m1-p2-acceptance.json
 
   web:
     name: Web production build
