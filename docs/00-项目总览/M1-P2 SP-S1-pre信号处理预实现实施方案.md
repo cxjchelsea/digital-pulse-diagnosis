@@ -1,6 +1,6 @@
 # M1-P2 SP-S1-pre信号处理预实现实施方案
 
-版本：0.1.3；状态：M1-P2A/P2B/P2C已实现（`m1_sp`）；P2D未开始。
+版本：0.1.4；状态：M1-P2A/P2B/P2C/P2D已实现（`m1_sp`），待PR复核。
 
 ## 1. 阶段定位
 
@@ -168,7 +168,7 @@ P2A职责：
 | normalization | M1Sample→NormalizedSession，保留mask和时间（P2A） |
 | integrity | CRC/sequence/timestamp/sensor/session完整性（P2A） |
 | windows | 结构性稳定窗口（P2A） |
-| processor | `SPPreprocessor`（P2A）+ `SPQualityProcessor`（P2B/P2C；P2D再扩展正式`SPProcessor`） |
+| processor | `SPPreprocessor`（P2A）+ `SPQualityProcessor`（P2B/P2C）+ 正式`SPProcessor`门面（P2D） |
 | metrics / quality / projection | P2B raw指标 + P2C beat/reference 扩展、`M1QualityResult`投影 |
 | filters / beats / reference | P2C 因果/离线滤波、逐搏、PPG 一对一匹配 |
 | observations | P2A Final Review：观测序列/时间戳异常 |
@@ -407,9 +407,9 @@ blocked_before_quality
 - `default_p2b_parameter_set()`：simulation-only 阈值经多 seed 表征冻结；P2A digest 兼容；
 - `QualityEvaluator` 优先级与 integrity/safety 分流（`sensor_disconnected`→integrity，abort/device_fault→blocked）；
 - `M1QualityProjector` → 正式 `M1QualityResult`（`score/confidence=null`，`parameter_status=synthetic_only`）；
-- `SPQualityStageResult` 阶段性结果（非最终 P2D `SPProcessingResult`）；
+- `SPQualityStageResult` 阶段性结果与最终内部`SPProcessingResult`；
 - characterization fixture：`tests/fixtures/m1_sp/p2b_characterization.json`；
-- 滤波 / 逐搏 / PPG / `reference_mismatch` 属于 P2C（已完成）；formal M1-P2 acceptance 仍属 P2D。
+- 滤波 / 逐搏 / PPG / `reference_mismatch` 属于 P2C（已完成）；formal M1-P2 acceptance 属于P2D（已完成）。
 
 ### M1-P2C：滤波、逐搏与PPG对齐（已完成）
 
@@ -424,14 +424,14 @@ blocked_before_quality
 - 无 StableWindow → `window-none-0001` / `insufficient_duration` / `too_short`（禁止静默空 quality）；
 - `default_p2c_parameter_set()`（`0.3.0-p2c`）；P2A/P2B digest 不变；
 - characterization：`tests/fixtures/m1_sp/p2c_characterization.json`；
-- **未实现**正式 `SPProcessor` / 16+2 acceptance / M1-P2 CI gate（P2D）。
+- P2C版本与参数digest保持冻结；P2D只增加工程门面和执行溯源，不改变算法参数结果。
 
-### M1-P2D：统一处理入口与综合验收（未开始）
+### M1-P2D：统一处理入口与综合验收（已完成）
 
-计划完成：
+已完成：
 
 - `SPProcessor.process(...)`；
-- provenance/version/digest；
+- 可注入`SPProcessingProvenance.software_revision`、version/digest与工程单位转换状态；
 - M1QualityResult Schema验证；
 - Replay确定性；
 - 16单attempt场景验收；
@@ -439,6 +439,8 @@ blocked_before_quality
 - `generate_m1_p2_acceptance.py`；
 - CI集成；
 - 文档收口。
+
+正式验收固定seed=1001，覆盖16个单attempt与2个multiattempt计划（共21次逐attempt处理），逐项验证direct/replay等价和重复运行确定性。golden采用UTF-8/LF、键排序、拒绝NaN的canonical JSON；默认只读，仅`--write-golden`显式更新。生产`m1_sp`不读取scenario、expected、fixture或golden。
 
 ## 17. M1-P2与P3/P4边界
 
