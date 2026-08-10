@@ -35,6 +35,15 @@ class M1SPP2DAcceptanceTests(unittest.TestCase):
             "m1_p1_regression_passed",
         ):
             self.assertIs(result[key], True, key)
+        self.assertEqual(
+            result["semantic_fingerprint_version"], "sp-result-fingerprint:v2"
+        )
+        self.assertTrue(result["gates"]["semantic_fingerprint_complete"])
+        self.assertTrue(all(
+            value is True
+            for key, value in result["semantic_fingerprint_coverage"].items()
+            if key != "version"
+        ))
 
 
 if __name__ == "__main__":
