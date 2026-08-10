@@ -107,13 +107,16 @@ class ReferenceAligner:
         # in lag window with smallest |lag - mid| then earliest PPG.
         mid = 0.5 * (min_lag + max_lag)
         ppg_j = 0
+        last_matched_ppg_index = -1
         for i, pb in enumerate(pulse):
             t_p = pb.peak_device_time_us / 1000.0
             best: tuple[int, float, float] | None = None  # j, abs_dev, lag
             # Advance lower bound.
             while ppg_j < ppg_n and (ppg[ppg_j].peak_device_time_us / 1000.0 - t_p) < min_lag:
                 ppg_j += 1
-            j = ppg_j
+            # Lag eligibility and match ordering are independent constraints:
+            # never revisit a PPG at or before the previous matched index.
+            j = max(ppg_j, last_matched_ppg_index + 1)
             while j < ppg_n:
                 lag = ppg[j].peak_device_time_us / 1000.0 - t_p
                 if lag > max_lag:
@@ -128,6 +131,7 @@ class ReferenceAligner:
             if best is not None:
                 used_ppg.add(best[0])
                 pairs.append((i, best[0], best[2]))
+                last_matched_ppg_index = best[0]
 
         matched = len(pairs)
         lags = np.asarray([p[2] for p in pairs], dtype=np.float64) if pairs else None
