@@ -52,28 +52,45 @@ def _canonical(value: Any) -> Any:
 
 
 def sp_result_fingerprint(result: SPProcessingResult) -> dict[str, Any]:
-    """Return all algorithm-relevant output while excluding execution provenance."""
+    """Canonical semantic payload, excluding code and transport provenance."""
+
+    quality_results = [
+        {
+            "window_id": item.window_id,
+            "label": item.label.value,
+            "reason_codes": list(item.reason_codes),
+            "metrics": _canonical(dict(item.metrics)),
+            "score": item.score,
+            "confidence": item.confidence,
+            "parameter_version": item.parameter_version,
+            "parameter_status": item.parameter_status.value,
+        }
+        for item in result.quality_results
+    ]
 
     return {
         "processing_status": result.processing_status,
-        "quality_results": [_canonical(item.to_dict()) for item in result.quality_results],
+        "quality_results": quality_results,
         "windows": _canonical(result.windows),
-        "integrity": _canonical(result.integrity),
-        "metrics_by_window": _canonical(result.metrics_by_window),
-        "evaluations_by_window": _canonical(result.evaluations_by_window),
-        "filters_by_window": _canonical(result.filter_views_by_window),
-        "beats_by_window": _canonical(result.beats_by_window),
-        "reference_by_window": _canonical(result.reference_by_window),
         "blocking_codes": list(result.blocking_codes),
         "processing_version": result.processing_version,
         "parameter_version": result.parameter_version,
         "parameter_status": result.parameter_status.value,
-        "parameter_digest": result.parameter_digest,
+        "configuration_digest": result.configuration_digest,
     }
 
 
+def sp_result_sha256(result: SPProcessingResult) -> str:
+    """Hash semantic output only; software_commit_sha is intentionally absent."""
+
+    return hashlib.sha256(canonical_json_bytes(sp_result_fingerprint(result))).hexdigest()
+
+
 def compare_sp_results(left: SPProcessingResult, right: SPProcessingResult) -> bool:
-    return sp_result_fingerprint(left) == sp_result_fingerprint(right)
+    return (
+        left.result_sha256 == right.result_sha256
+        and sp_result_fingerprint(left) == sp_result_fingerprint(right)
+    )
 
 
 def summarize_sp_result(result: SPProcessingResult) -> dict[str, Any]:
@@ -86,8 +103,7 @@ def summarize_sp_result(result: SPProcessingResult) -> dict[str, Any]:
                 "window_id": item.window_id,
                 "label": item.label.value,
                 "reason_codes": list(item.reason_codes),
-                "beat_count": item.metrics.get("beat_count"),
-                "ppg_match_rate": item.metrics.get("ppg_match_rate"),
+                "formal_metrics": _canonical(dict(item.metrics)),
             }
         )
     references = []
@@ -105,6 +121,11 @@ def summarize_sp_result(result: SPProcessingResult) -> dict[str, Any]:
         "processing_status": result.processing_status,
         "blocking_codes": list(result.blocking_codes),
         "window_ids": [window.window_id for window in result.windows],
+        "window_count": len(result.windows),
         "quality_results": quality,
         "references": references,
+        "processing_version": result.processing_version,
+        "parameter_version": result.parameter_version,
+        "configuration_digest": result.configuration_digest,
+        "result_sha256": result.result_sha256,
     }

@@ -18,6 +18,7 @@ class M1SPP2DGoldenTests(unittest.TestCase):
         self.assertEqual(document["format_version"], GOLDEN_FORMAT_VERSION)
         self.assertEqual(document["scenario_registry_digest"], scenario_registry_digest())
         self.assertNotIn("software_revision", raw.decode("utf-8"))
+        self.assertNotIn("software_commit_sha", raw.decode("utf-8"))
         self.assertNotIn("expected", raw.decode("utf-8").lower())
 
 

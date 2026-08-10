@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Protocol
+from typing import Iterable
 
 import numpy as np
 
@@ -16,84 +16,17 @@ from digital_pulse.m1_contracts import (
 )
 
 from .errors import SPError
-from .models import EngineeringUnitConversionProvenance, NormalizedChannelSeries, NormalizedSession
+from .engineering_units import (
+    EngineeringUnitConversionProvenance,
+    EngineeringUnitConverter,
+    RawIdentityConverter,
+    SyntheticCalibrationAdapter,
+)
+from .models import NormalizedChannelSeries, NormalizedSession
 
 TRI_TRUE = np.int8(1)
 TRI_FALSE = np.int8(0)
 TRI_UNKNOWN = np.int8(-1)
-
-
-class EngineeringUnitConverter(Protocol):
-    """P2A interface only — no H1 calibration applied on the default path."""
-
-    def convert_pulse(self, raw: float) -> float: ...
-
-    def convert_load(self, raw: float) -> float: ...
-
-    def convert_ppg(self, raw: float) -> float: ...
-
-    @property
-    def provenance(self) -> EngineeringUnitConversionProvenance: ...
-
-
-class RawIdentityConverter:
-    """Pass-through raw counts; simulation path does not invent engineering units."""
-
-    def convert_pulse(self, raw: float) -> float:
-        return float(raw)
-
-    def convert_load(self, raw: float) -> float:
-        return float(raw)
-
-    def convert_ppg(self, raw: float) -> float:
-        return float(raw)
-
-    @property
-    def provenance(self) -> EngineeringUnitConversionProvenance:
-        from digital_pulse.m1_contracts import ParameterStatus
-
-        return EngineeringUnitConversionProvenance(
-            converter_name=type(self).__name__,
-            converter_version="raw-identity-v1",
-            parameter_status=ParameterStatus.PENDING_H1_CALIBRATION,
-            raw_identity=True,
-            engineering_units_applied=False,
-            real_calibration_pending=True,
-        )
-
-
-class SyntheticCalibrationAdapter:
-    """Explicitly simulation-only adapter name — not default P2A path.
-
-    D2 synthetic CalibrationRecord must not be treated as H1 formal calibration.
-    """
-
-    parameter_class = "simulation_only"
-
-    def __init__(self, identity: EngineeringUnitConverter | None = None):
-        self._inner = identity or RawIdentityConverter()
-
-    def convert_pulse(self, raw: float) -> float:
-        return self._inner.convert_pulse(raw)
-
-    def convert_load(self, raw: float) -> float:
-        return self._inner.convert_load(raw)
-
-    def convert_ppg(self, raw: float) -> float:
-        return self._inner.convert_ppg(raw)
-
-    @property
-    def provenance(self) -> EngineeringUnitConversionProvenance:
-        from digital_pulse.m1_contracts import ParameterStatus
-
-        return EngineeringUnitConversionProvenance(
-            converter_name=type(self).__name__,
-            converter_version="synthetic-adapter-v1",
-            parameter_status=ParameterStatus.SYNTHETIC_ONLY,
-            raw_identity=True,
-            engineering_units_applied=False,
-            real_calibration_pending=True,
-        )
 
 
 def _tri_state(flag: bool | None) -> np.int8:

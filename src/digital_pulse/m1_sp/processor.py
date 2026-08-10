@@ -45,6 +45,8 @@ from .quality import (
 from .reference import analyze_reference
 from .windows import StableWindowSelector
 
+SP_PROCESSING_VERSION_P2D = "0.4.0-p2d"
+
 
 class SPPreprocessor:
     """P2A preprocessing — no M1QualityResult / filters / beats."""
@@ -366,6 +368,10 @@ class SPProcessor:
         return self._quality.parameters
 
     @property
+    def processing_version(self) -> str:
+        return SP_PROCESSING_VERSION_P2D
+
+    @property
     def engineering_unit_conversion(self):
         return self._quality.engineering_unit_conversion
 
@@ -374,32 +380,33 @@ class SPProcessor:
         session: M1Session,
         samples: Iterable[M1Sample],
         *,
-        provenance: SPProcessingProvenance | None = None,
+        provenance: SPProcessingProvenance,
     ) -> SPProcessingResult:
-        execution = provenance or SPProcessingProvenance()
         stage = self._quality.process(session, samples)
         preprocessing = stage.preprocessing
         limitations = tuple(
             item.value if hasattr(item, "value") else str(item) for item in session.limitations
         )
-        return SPProcessingResult(
+        result = SPProcessingResult(
             session_id=session.session_id,
             source_type=preprocessing.normalized.source_type,
             processing_status=stage.processing_status,
             quality_results=stage.quality_results,
-            windows=preprocessing.windows.windows,
-            integrity=preprocessing.integrity,
-            metrics_by_window=stage.metrics_by_window,
-            evaluations_by_window=stage.evaluations_by_window,
-            filter_views_by_window=stage.filter_views_by_window,
-            beats_by_window=stage.beats_by_window,
-            reference_by_window=stage.reference_by_window,
             blocking_codes=stage.blocking_codes,
             limitations=limitations,
-            processing_version=stage.processing_version,
+            processing_version=SP_PROCESSING_VERSION_P2D,
             parameter_version=stage.parameter_version,
             parameter_status=stage.parameter_status,
-            parameter_digest=stage.configuration_digest,
-            software_revision=execution.software_revision,
+            configuration_digest=stage.configuration_digest,
+            software_commit_sha=provenance.software_commit_sha,
             engineering_unit_conversion=self._quality.engineering_unit_conversion,
+            stage_result=stage,
+            result_sha256="0" * 64,
         )
+        from .summary import sp_result_sha256
+
+        return replace(result, result_sha256=sp_result_sha256(result))
+
+
+def create_p2d_processor() -> SPProcessor:
+    return SPProcessor(quality_processor=create_p2c_processor())

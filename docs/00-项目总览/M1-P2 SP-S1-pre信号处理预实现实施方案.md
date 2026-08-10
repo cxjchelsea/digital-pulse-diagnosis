@@ -431,7 +431,10 @@ blocked_before_quality
 已完成：
 
 - `SPProcessor.process(...)`；
-- 可注入`SPProcessingProvenance.software_revision`、version/digest与工程单位转换状态；
+- 强制注入`SPProcessingProvenance.software_commit_sha`（40位小写SHA）；
+- P2D编排版本`0.4.0-p2d`与P2C参数版本`0.3.0-p2c`、冻结configuration digest分离追踪；
+- `SPProcessingResult.result_sha256`只哈希语义结果，不包含software commit SHA；
+- 工程单位接口明确区分raw、simulation-only synthetic view和`pending_h1_calibration`；
 - M1QualityResult Schema验证；
 - Replay确定性；
 - 16单attempt场景验收；
@@ -440,7 +443,7 @@ blocked_before_quality
 - CI集成；
 - 文档收口。
 
-正式验收固定seed=1001，覆盖16个单attempt与2个multiattempt计划（共21次逐attempt处理），逐项验证direct/replay等价和重复运行确定性。golden采用UTF-8/LF、键排序、拒绝NaN的canonical JSON；默认只读，仅`--write-golden`显式更新。生产`m1_sp`不读取scenario、expected、fixture或golden。
+正式验收固定seed=1001，覆盖16个单attempt与2个multiattempt计划（共21次逐attempt处理），逐项验证direct/replay等价、三次处理确定性、删除scenario/expected以及篡改expected后的语义与`result_sha256`不变。golden采用UTF-8/LF、键排序、拒绝NaN的canonical JSON；默认只读，仅`--write-golden`显式更新。生产`m1_sp`不读取scenario、expected、fixture或golden。
 
 ## 17. M1-P2与P3/P4边界
 

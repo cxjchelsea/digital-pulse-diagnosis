@@ -9,6 +9,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from .engineering_units import EngineeringUnitConversionProvenance
+
 from digital_pulse.m1_contracts import (
     M1QualityResult,
     ParameterStatus,
@@ -201,29 +203,15 @@ class SPQualityStageResult:
 class SPProcessingProvenance:
     """Execution provenance supplied by the application or acceptance harness.
 
-    The algorithm intentionally does not inspect Git. Packaged deployments may
-    omit ``software_revision``; formal acceptance supplies the exact Git SHA.
+    The algorithm intentionally does not inspect Git. The caller must inject
+    the exact committed software revision used for processing.
     """
 
-    software_revision: str | None = None
+    software_commit_sha: str
 
     def __post_init__(self) -> None:
-        if self.software_revision is not None and not re.fullmatch(
-            r"[0-9a-fA-F]{40}", self.software_revision
-        ):
-            raise ValueError("software_revision must be a full 40-character Git SHA")
-
-
-@dataclass(frozen=True, slots=True)
-class EngineeringUnitConversionProvenance:
-    """Truthful conversion state while real H1 calibration remains pending."""
-
-    converter_name: str
-    converter_version: str
-    parameter_status: ParameterStatus
-    raw_identity: bool
-    engineering_units_applied: bool
-    real_calibration_pending: bool
+        if not re.fullmatch(r"[0-9a-f]{40}", self.software_commit_sha):
+            raise ValueError("software_commit_sha must be 40 lowercase hexadecimal characters")
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,21 +226,16 @@ class SPProcessingResult:
     source_type: SourceType
     processing_status: str
     quality_results: tuple[M1QualityResult, ...]
-    windows: tuple[StableWindow, ...]
-    integrity: IntegrityAnalysis
-    metrics_by_window: Mapping[str, QualityMetricsInternal]
-    evaluations_by_window: Mapping[str, QualityEvaluation]
-    filter_views_by_window: Mapping[str, Any]
-    beats_by_window: Mapping[str, Any]
-    reference_by_window: Mapping[str, Any]
     blocking_codes: tuple[str, ...]
     limitations: tuple[str, ...]
     processing_version: str
     parameter_version: str
     parameter_status: ParameterStatus
-    parameter_digest: str
-    software_revision: str | None
+    configuration_digest: str
+    software_commit_sha: str
     engineering_unit_conversion: EngineeringUnitConversionProvenance
+    stage_result: SPQualityStageResult
+    result_sha256: str
 
     def __post_init__(self) -> None:
         if self.processing_status not in {"quality_evaluated", "blocked_before_quality"}:
@@ -261,3 +244,47 @@ class SPProcessingResult:
             raise ValueError("quality_evaluated requires at least one quality result")
         if self.processing_status == "blocked_before_quality" and self.quality_results:
             raise ValueError("blocked_before_quality requires empty quality results")
+        if not re.fullmatch(r"[0-9a-f]{64}", self.configuration_digest):
+            raise ValueError("configuration_digest must be 64 lowercase hexadecimal characters")
+        if not re.fullmatch(r"[0-9a-f]{40}", self.software_commit_sha):
+            raise ValueError("software_commit_sha must be 40 lowercase hexadecimal characters")
+        if not re.fullmatch(r"[0-9a-f]{64}", self.result_sha256):
+            raise ValueError("result_sha256 must be 64 lowercase hexadecimal characters")
+
+    @property
+    def parameter_digest(self) -> str:
+        """Compatibility alias for the now-explicit configuration digest."""
+        return self.configuration_digest
+
+    @property
+    def software_revision(self) -> str:
+        """Compatibility alias; formal P2D output names this commit SHA explicitly."""
+        return self.software_commit_sha
+
+    @property
+    def windows(self) -> tuple[StableWindow, ...]:
+        return self.stage_result.preprocessing.windows.windows
+
+    @property
+    def integrity(self) -> IntegrityAnalysis:
+        return self.stage_result.preprocessing.integrity
+
+    @property
+    def metrics_by_window(self) -> Mapping[str, QualityMetricsInternal]:
+        return self.stage_result.metrics_by_window
+
+    @property
+    def evaluations_by_window(self) -> Mapping[str, QualityEvaluation]:
+        return self.stage_result.evaluations_by_window
+
+    @property
+    def filter_views_by_window(self) -> Mapping[str, Any]:
+        return self.stage_result.filter_views_by_window
+
+    @property
+    def beats_by_window(self) -> Mapping[str, Any]:
+        return self.stage_result.beats_by_window
+
+    @property
+    def reference_by_window(self) -> Mapping[str, Any]:
+        return self.stage_result.reference_by_window

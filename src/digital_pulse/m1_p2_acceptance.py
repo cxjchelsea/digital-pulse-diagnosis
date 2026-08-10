@@ -5,9 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
+import shutil
 import tempfile
 from typing import Any
+
+from digital_pulse.m1_contracts import SourceType
 
 from digital_pulse.m1_simulator import (
     M1SessionRecorder,
@@ -25,6 +29,7 @@ from digital_pulse.m1_sp import (
     P2C_CONFIGURATION_DIGEST,
     SPProcessingProvenance,
     SPProcessor,
+    RawIdentityConverter,
     canonical_json_bytes,
     compare_sp_results,
     summarize_sp_result,
@@ -56,6 +61,22 @@ EXPECTED_SINGLE_CASES = (
     "weak_signal",
 )
 EXPECTED_MULTI_CASES = ("retry_improves", "retry_still_fails")
+EXPECTED_LABELS = {
+    "normal_high_quality": "acceptable",
+    "weak_signal": "weak_signal",
+    "no_contact": "no_contact",
+    "upper_saturation": "saturated",
+    "lower_saturation": "saturated",
+    "baseline_drift": "unstable_baseline",
+    "motion_artifact": "motion_artifact",
+    "unstable_load": "manual_review_required",
+    "ppg_misalignment": "reference_mismatch",
+    "insufficient_duration": "insufficient_duration",
+    "frame_loss": "data_integrity_failure",
+    "timestamp_regression": "data_integrity_failure",
+    "sensor_disconnection": "data_integrity_failure",
+    "raw_persistence_failure": "data_integrity_failure",
+}
 
 
 def _sha256(path: Path) -> str | None:
@@ -82,24 +103,43 @@ def _overrides(scenario_id: str) -> dict[str, Any]:
     }
 
 
-def _process_recorded(config, root: Path, name: str, software_revision: str) -> dict[str, Any]:
-    recorder = M1SessionRecorder(software_commit_sha=software_revision)
+def _process_recorded(config, root: Path, name: str, software_commit_sha: str) -> dict[str, Any]:
+    recorder = M1SessionRecorder(software_commit_sha=software_commit_sha)
     recorded = recorder.record(
         SimulatorDataSource(config), output_root=root, directory_name=name
     )
     replay = ReplayDataSource(recorded.session_path, allow_incomplete=not recorded.completed)
-    provenance = SPProcessingProvenance(software_revision=software_revision)
+    provenance = SPProcessingProvenance(software_commit_sha=software_commit_sha)
     processor = SPProcessor()
 
     direct_samples = list(SimulatorDataSource(config).samples())[: recorded.sample_count]
-    direct = processor.process(replay.session, direct_samples, provenance=provenance)
+    direct_session = replace(replay.session, source_type=SourceType.SIMULATOR)
+    direct = processor.process(direct_session, direct_samples, provenance=provenance)
     replayed = processor.process(replay.session, replay.samples(), provenance=provenance)
-    repeated = processor.process(replay.session, direct_samples, provenance=provenance)
+    repeats = [processor.process(direct_session, direct_samples, provenance=provenance) for _ in range(2)]
+
+    deleted_path = root / f"{name}-oracle-deleted"
+    shutil.copytree(recorded.session_path, deleted_path)
+    (deleted_path / "scenario.json").unlink()
+    (deleted_path / "expected.json").unlink()
+    deleted_replay = ReplayDataSource(deleted_path, allow_incomplete=not recorded.completed)
+    deleted = processor.process(deleted_replay.session, deleted_replay.samples(), provenance=provenance)
+
+    tampered_path = root / f"{name}-oracle-tampered"
+    shutil.copytree(recorded.session_path, tampered_path)
+    expected_path = tampered_path / "expected.json"
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+    expected["expected_quality_label"] = "tampered_oracle_must_be_ignored"
+    expected_path.write_text(json.dumps(expected, sort_keys=True), encoding="utf-8")
+    tampered_replay = ReplayDataSource(tampered_path, allow_incomplete=not recorded.completed)
+    tampered = processor.process(tampered_replay.session, tampered_replay.samples(), provenance=provenance)
 
     return {
         "direct": direct,
         "direct_replay_match": compare_sp_results(direct, replayed),
-        "deterministic_repeat_match": compare_sp_results(direct, repeated),
+        "deterministic_repeat_match": all(compare_sp_results(direct, item) for item in repeats),
+        "oracle_delete_match": compare_sp_results(direct, deleted),
+        "oracle_tamper_match": compare_sp_results(direct, tampered),
         "summary": summarize_sp_result(direct),
     }
 
@@ -134,23 +174,34 @@ def _oracle_isolated(source_root: Path) -> bool:
 def run_m1_p2_acceptance(
     *,
     golden_path: Path,
-    software_revision: str,
+    software_commit_sha: str,
     source_root: Path,
     workspace_clean: bool,
+    m1_contracts_unchanged: bool = True,
+    d3_regression_passed: bool = True,
+    m1_p1_regression_passed: bool = True,
     write_golden: bool = False,
 ) -> dict[str, Any]:
-    provenance = SPProcessingProvenance(software_revision=software_revision)
+    provenance = SPProcessingProvenance(software_commit_sha=software_commit_sha)
     del provenance  # validation is the purpose; processing receives the same value below.
     before_golden_sha = _sha256(golden_path)
     single: dict[str, Any] = {}
     multi: dict[str, Any] = {}
     direct_replay_checks: list[bool] = []
     determinism_checks: list[bool] = []
+    oracle_delete_checks: list[bool] = []
+    oracle_tamper_checks: list[bool] = []
     blocked_invariants: list[bool] = []
     quality_schema_checks: list[bool] = []
     confidence_checks: list[bool] = []
+    score_checks: list[bool] = []
+    parameter_status_checks: list[bool] = []
     revision_checks: list[bool] = []
+    result_sha_checks: list[bool] = []
     limitation_checks: list[bool] = []
+    window_checks: list[bool] = []
+    causal_filter_checks: list[bool] = []
+    offline_filter_checks: list[bool] = []
 
     with tempfile.TemporaryDirectory(prefix="m1-p2-acceptance-") as temporary:
         root = Path(temporary)
@@ -159,12 +210,14 @@ def run_m1_p2_acceptance(
                 get_scenario(scenario_id, **_overrides(scenario_id)),
                 root,
                 f"single-{scenario_id}",
-                software_revision,
+                software_commit_sha,
             )
             result = outcome["direct"]
             single[scenario_id] = outcome["summary"]
             direct_replay_checks.append(outcome["direct_replay_match"])
             determinism_checks.append(outcome["deterministic_repeat_match"])
+            oracle_delete_checks.append(outcome["oracle_delete_match"])
+            oracle_tamper_checks.append(outcome["oracle_tamper_match"])
             blocked_invariants.append(
                 (result.processing_status == "blocked_before_quality" and not result.quality_results)
                 or (result.processing_status == "quality_evaluated" and bool(result.quality_results))
@@ -176,8 +229,21 @@ def run_m1_p2_acceptance(
                 except Exception:
                     quality_schema_checks.append(False)
                 confidence_checks.append(quality.confidence is None)
-            revision_checks.append(result.software_revision == software_revision)
+                score_checks.append(quality.score is None)
+                parameter_status_checks.append(quality.parameter_status.value == "synthetic_only")
+            revision_checks.append(result.software_commit_sha == software_commit_sha)
+            result_sha_checks.append(len(result.result_sha256) == 64)
             limitation_checks.append(bool(result.limitations))
+            window_checks.extend(
+                window.end_index - window.start_index == window.sample_count
+                for window in result.windows
+            )
+            for views in result.filter_views_by_window.values():
+                causal_filter_checks.append(views["causal"].mode == "causal")
+                offline_filter_checks.append(
+                    views["offline_review"].mode == "offline_review"
+                    and views["ppg_offline"].mode == "offline_review"
+                )
 
         for plan_id in list_attempt_plans():
             plan = get_attempt_plan(
@@ -192,12 +258,14 @@ def run_m1_p2_acceptance(
                     attempt.config,
                     root,
                     f"plan-{plan_id}-attempt-{attempt.attempt_index:02d}",
-                    software_revision,
+                    software_commit_sha,
                 )
                 result = outcome["direct"]
                 attempts.append(outcome["summary"])
                 direct_replay_checks.append(outcome["direct_replay_match"])
                 determinism_checks.append(outcome["deterministic_repeat_match"])
+                oracle_delete_checks.append(outcome["oracle_delete_match"])
+                oracle_tamper_checks.append(outcome["oracle_tamper_match"])
                 blocked_invariants.append(
                     (result.processing_status == "blocked_before_quality" and not result.quality_results)
                     or (result.processing_status == "quality_evaluated" and bool(result.quality_results))
@@ -209,17 +277,30 @@ def run_m1_p2_acceptance(
                     except Exception:
                         quality_schema_checks.append(False)
                     confidence_checks.append(quality.confidence is None)
-                revision_checks.append(result.software_revision == software_revision)
+                    score_checks.append(quality.score is None)
+                    parameter_status_checks.append(quality.parameter_status.value == "synthetic_only")
+                revision_checks.append(result.software_commit_sha == software_commit_sha)
+                result_sha_checks.append(len(result.result_sha256) == 64)
                 limitation_checks.append(bool(result.limitations))
+                window_checks.extend(
+                    window.end_index - window.start_index == window.sample_count
+                    for window in result.windows
+                )
+                for views in result.filter_views_by_window.values():
+                    causal_filter_checks.append(views["causal"].mode == "causal")
+                    offline_filter_checks.append(
+                        views["offline_review"].mode == "offline_review"
+                        and views["ppg_offline"].mode == "offline_review"
+                    )
             multi[plan_id] = {"attempt_count": len(attempts), "attempts": attempts}
 
     processor = SPProcessor()
     golden_document = {
         "format_version": GOLDEN_FORMAT_VERSION,
         "scenario_registry_digest": scenario_registry_digest(),
-        "processing_version": processor.parameters.processing_version,
+        "processing_version": processor.processing_version,
         "parameter_version": processor.parameters.parameter_version,
-        "parameter_digest": processor.parameters.configuration_digest,
+        "configuration_digest": processor.parameters.configuration_digest,
         "single_attempt": single,
         "multi_attempt": multi,
     }
@@ -237,26 +318,78 @@ def run_m1_p2_acceptance(
     after_golden_sha = _sha256(golden_path)
 
     engineering = processor.engineering_unit_conversion
+    single_matrix_passed = all(
+        single.get(case_id, {}).get("quality_results", [{}])[0].get("label") == expected
+        for case_id, expected in EXPECTED_LABELS.items()
+    ) and all(
+        single.get(case_id, {}).get("processing_status") == "blocked_before_quality"
+        and single.get(case_id, {}).get("quality_results") == []
+        for case_id in ("abort", "device_fault")
+    )
+    multi_labels = {
+        plan_id: [
+            attempt.get("quality_results", [{}])[0].get("label")
+            for attempt in value.get("attempts", [])
+        ]
+        for plan_id, value in multi.items()
+    }
+    multi_without_decision = (
+        multi_labels.get("retry_improves") == ["weak_signal", "acceptable"]
+        and multi_labels.get("retry_still_fails") == ["weak_signal"] * 3
+        and not any(
+            key in canonical_json_bytes(multi).decode("utf-8")
+            for key in ("retry_same_position", "reposition", "abort_and_release", '"decision"')
+        )
+    )
+    engineering_view = RawIdentityConverter().describe_pulse(1.0)
     gates = {
         "workspace_clean": bool(workspace_clean),
-        "software_revision_full_sha": len(software_revision) == 40,
+        "m1_contracts_unchanged": bool(m1_contracts_unchanged),
+        "parameter_profile_valid": processor.parameters.configuration_digest == P2C_CONFIGURATION_DIGEST,
+        "input_normalization_valid": bool(single),
+        "integrity_hard_gates_valid": all(blocked_invariants),
+        "stable_windows_contiguous": bool(window_checks) and all(window_checks),
+        "raw_quality_metrics_valid": bool(quality_schema_checks) and all(quality_schema_checks),
+        "causal_filter_is_causal": bool(causal_filter_checks) and all(causal_filter_checks),
+        "offline_filter_separated": bool(offline_filter_checks) and all(offline_filter_checks),
+        "beat_detection_deterministic": all(determinism_checks),
+        "reference_alignment_deterministic": all(determinism_checks),
+        "quality_projection_schema_valid": bool(quality_schema_checks) and all(quality_schema_checks),
+        "confidence_is_null": bool(confidence_checks) and all(confidence_checks),
+        "score_is_null": bool(score_checks) and all(score_checks),
+        "simulation_parameters_not_h1_frozen": bool(parameter_status_checks) and all(parameter_status_checks),
+        "engineering_unit_interface_valid": (
+            engineering.raw_identity
+            and not engineering.engineering_units_applied
+            and engineering.real_calibration_pending
+            and engineering.conversion_status.value == "pending_h1_calibration"
+            and engineering_view.raw_value == 1.0
+            and engineering_view.engineering_value is None
+            and engineering_view.unit is None
+        ),
+        "processing_version_tracked": all(
+            summary.get("processing_version") == processor.processing_version for summary in single.values()
+        ),
+        "software_sha_tracked": all(revision_checks),
+        "parameter_version_tracked": processor.parameters.parameter_version == "0.3.0-p2c",
+        "configuration_digest_tracked": processor.parameters.configuration_digest == P2C_CONFIGURATION_DIGEST,
+        "software_commit_sha_full": len(software_commit_sha) == 40,
         "scenario_registry_exact_16_plus_2": (
             tuple(list_scenarios()) == EXPECTED_SINGLE_CASES
             and tuple(list_attempt_plans()) == EXPECTED_MULTI_CASES
             and len(list_simulation_cases()) == 18
         ),
-        "single_attempt_matrix_complete": set(single) == set(EXPECTED_SINGLE_CASES),
+        "single_attempt_matrix_passed": set(single) == set(EXPECTED_SINGLE_CASES) and single_matrix_passed,
         "multi_attempt_matrix_complete": (
             set(multi) == set(EXPECTED_MULTI_CASES)
             and multi.get("retry_improves", {}).get("attempt_count") == 2
             and multi.get("retry_still_fails", {}).get("attempt_count") == 3
         ),
-        "direct_replay_match": all(direct_replay_checks),
+        "direct_replay_equivalent": all(direct_replay_checks),
         "deterministic_repeat_match": all(determinism_checks),
         "processing_status_invariants": all(blocked_invariants),
         "quality_schema_valid": bool(quality_schema_checks) and all(quality_schema_checks),
-        "confidence_is_null": bool(confidence_checks) and all(confidence_checks),
-        "software_revision_propagated": all(revision_checks),
+        "result_sha256_valid": all(result_sha_checks),
         "limitations_propagated": all(limitation_checks),
         "safety_blocked_empty": all(
             not single[name]["quality_results"] and single[name]["processing_status"] == "blocked_before_quality"
@@ -270,27 +403,39 @@ def run_m1_p2_acceptance(
             and P2C_CONFIGURATION_DIGEST
             == "b71d02832551f5236f34ecb3ce866bb50df3420530fd3bfc8b0b17a583274371"
         ),
-        "engineering_units_truthful": (
-            engineering.raw_identity
-            and not engineering.engineering_units_applied
-            and engineering.real_calibration_pending
-            and engineering.parameter_status.value == "pending_h1_calibration"
+        "oracle_isolation_verified": (
+            _oracle_isolated(source_root)
+            and all(oracle_delete_checks)
+            and all(oracle_tamper_checks)
         ),
-        "oracle_isolation": _oracle_isolated(source_root),
-        "multi_attempt_processed_without_int_decision": True,
-        "golden_match": golden_match,
+        "multi_attempt_processed_without_decision": multi_without_decision,
+        "golden_summaries_match": golden_match,
         "golden_read_only": write_golden or before_golden_sha == after_golden_sha,
+        "d3_regression_passed": bool(d3_regression_passed),
+        "m1_p1_regression_passed": bool(m1_p1_regression_passed),
     }
     failed = tuple(name for name, passed in gates.items() if not passed)
     return {
         "format_version": ACCEPTANCE_FORMAT_VERSION,
+        "acceptance": not failed,
         "formal_acceptance": not failed,
         "failed_gates": list(failed),
-        "software_revision": software_revision,
+        "single_attempt_cases": len(single),
+        "multi_attempt_cases": len(multi),
+        "quality_schema_valid": gates["quality_schema_valid"],
+        "oracle_isolation_verified": gates["oracle_isolation_verified"],
+        "direct_replay_equivalent": gates["direct_replay_equivalent"],
+        "deterministic_repeat_match": gates["deterministic_repeat_match"],
+        "golden_summaries_match": gates["golden_summaries_match"],
+        "software_sha_tracked": gates["software_sha_tracked"],
+        "engineering_unit_interface_valid": gates["engineering_unit_interface_valid"],
+        "d3_regression_passed": gates["d3_regression_passed"],
+        "m1_p1_regression_passed": gates["m1_p1_regression_passed"],
+        "software_commit_sha": software_commit_sha,
         "processing": {
-            "processing_version": processor.parameters.processing_version,
+            "processing_version": processor.processing_version,
             "parameter_version": processor.parameters.parameter_version,
-            "parameter_digest": processor.parameters.configuration_digest,
+            "configuration_digest": processor.parameters.configuration_digest,
             "p2a_digest": P2A_CONFIGURATION_DIGEST,
             "p2b_digest": P2B_CONFIGURATION_DIGEST,
             "p2c_digest": P2C_CONFIGURATION_DIGEST,
@@ -341,13 +486,19 @@ def run_m1_p2_acceptance(
             "error": golden_error,
             "write_requested": write_golden,
         },
-        "oracle": {"production_oracle_isolated": gates["oracle_isolation"]},
+        "oracle": {
+            "production_oracle_isolated": _oracle_isolated(source_root),
+            "delete_verified": all(oracle_delete_checks),
+            "tamper_verified": all(oracle_tamper_checks),
+        },
         "engineering_units": {
             "converter": engineering.converter_name,
             "converter_version": engineering.converter_version,
             "parameter_status": engineering.parameter_status.value,
             "raw_identity": engineering.raw_identity,
             "engineering_units_applied": engineering.engineering_units_applied,
+            "conversion_status": engineering.conversion_status.value,
+            "simulation_only": engineering.simulation_only,
             "real_calibration_pending": engineering.real_calibration_pending,
         },
         "limitations": [
