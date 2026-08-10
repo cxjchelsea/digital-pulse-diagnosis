@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 import subprocess
@@ -13,17 +14,80 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GOLDEN = ROOT / "tests" / "fixtures" / "m1_sp" / "p2d_golden.json"
 DEFAULT_REPORT = ROOT / "artifacts" / "acceptance" / "m1-p2-acceptance.json"
 
+# Main-branch merge commits where each contract family became authoritative.
+# These path trees match the respective final feature heads dd78620 and 01ca160.
+M1_P0_CONTRACT_BASELINE_SHA = "4375759e0361efcf595ead656d55f42ae0ae50c6"
+M1_P1_SIMULATOR_BASELINE_SHA = "c2d60a5b7e71a195207019bd413551b03c88d27a"
+M1_P0_CONTRACT_PATHS = (
+    "src/digital_pulse/m1_contracts.py",
+    "protocols/m1-sample.schema.json",
+    "protocols/m1-session.schema.json",
+    "protocols/m1-quality.schema.json",
+    "protocols/m1-decision.schema.json",
+    "protocols/m1-report.schema.json",
+)
+M1_P1_SIMULATOR_SCHEMA_PATHS = (
+    "protocols/m1-simulator-event.schema.json",
+    "protocols/m1-simulator-expected.schema.json",
+    "protocols/m1-simulator-plan.schema.json",
+    "protocols/m1-simulator-scenario.schema.json",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FrozenPathCheck:
+    baseline_sha: str
+    baseline_available: bool
+    state: str
+    returncode: int
+    stderr: str
+
+    def as_report(self) -> dict[str, object]:
+        report = asdict(self)
+        report["available"] = report.pop("baseline_available")
+        report["sha"] = report.pop("baseline_sha")
+        return report
+
+
+def _check_frozen_paths(baseline_sha: str, paths: tuple[str, ...]) -> FrozenPathCheck:
+    baseline = subprocess.run(
+        ["git", "cat-file", "-e", f"{baseline_sha}^{{commit}}"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if baseline.returncode != 0:
+        return FrozenPathCheck(
+            baseline_sha=baseline_sha,
+            baseline_available=False,
+            state="baseline_unavailable",
+            returncode=baseline.returncode,
+            stderr=baseline.stderr.strip(),
+        )
+
+    diff = subprocess.run(
+        ["git", "diff", "--quiet", baseline_sha, "HEAD", "--", *paths],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return FrozenPathCheck(
+        baseline_sha=baseline_sha,
+        baseline_available=True,
+        state={0: "unchanged", 1: "changed"}.get(diff.returncode, "error"),
+        returncode=diff.returncode,
+        stderr=diff.stderr.strip(),
+    )
+
 
 def _git(*args: str) -> str:
     return subprocess.check_output(
         ["git", *args], cwd=ROOT, text=True, encoding="utf-8"
     ).strip()
-
-
-def _git_success(*args: str) -> bool:
-    return subprocess.run(
-        ["git", *args], cwd=ROOT, check=False, capture_output=True
-    ).returncode == 0
 
 
 def _d3_regression_passed() -> bool:
@@ -58,28 +122,20 @@ def main(argv: list[str] | None = None) -> int:
         golden_path=ROOT / "tests" / "fixtures" / "m1_simulator" / "golden_summaries.json",
         d3_regression_passed=d3_passed,
     )
-    contracts_unchanged = _git_success(
-        "diff",
-        "--quiet",
-        "849dda5fa6ef2ae165f982d8b565cdfaa8a3a643",
-        "--",
-        "src/digital_pulse/m1_contracts.py",
-        "protocols/m1-session.schema.json",
-        "protocols/m1-sample.schema.json",
-        "protocols/m1-quality.schema.json",
-        "protocols/m1-decision.schema.json",
-        "protocols/m1-report.schema.json",
-        "protocols/m1-simulator-event.schema.json",
-        "protocols/m1-simulator-expected.schema.json",
-        "protocols/m1-simulator-plan.schema.json",
-        "protocols/m1-simulator-scenario.schema.json",
+    p0_contracts = _check_frozen_paths(M1_P0_CONTRACT_BASELINE_SHA, M1_P0_CONTRACT_PATHS)
+    p1_simulator = _check_frozen_paths(
+        M1_P1_SIMULATOR_BASELINE_SHA, M1_P1_SIMULATOR_SCHEMA_PATHS
     )
+    frozen_baselines = {
+        "m1_p0": p0_contracts.as_report(),
+        "m1_p1_simulator": p1_simulator.as_report(),
+    }
     result = run_m1_p2_acceptance(
         golden_path=args.golden,
         software_commit_sha=software_commit_sha,
         source_root=ROOT / "src",
         workspace_clean=workspace_clean,
-        m1_contracts_unchanged=contracts_unchanged,
+        frozen_baselines=frozen_baselines,
         d3_regression_passed=d3_passed,
         m1_p1_regression_passed=(p1.acceptance and not p1.failed_gates),
         write_golden=bool(args.write_golden),

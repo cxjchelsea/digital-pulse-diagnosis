@@ -9,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -277,13 +277,37 @@ def _semantic_fingerprint_coverage(result) -> dict[str, Any]:
     }
 
 
+def _frozen_baseline_gates(
+    *,
+    baseline_gate: str,
+    unchanged_gate: str,
+    error_gate: str,
+    detail: Mapping[str, Any],
+) -> dict[str, bool]:
+    """Keep unavailable/error states distinct from observed contract drift."""
+    if not detail:
+        return {}
+    available = detail.get("available") is True
+    state = detail.get("state")
+    state_is_consistent = (
+        state in {"unchanged", "changed"}
+        if available
+        else state == "baseline_unavailable"
+    )
+    return {
+        baseline_gate: available,
+        unchanged_gate: state != "changed" if state_is_consistent else True,
+        error_gate: state_is_consistent,
+    }
+
+
 def run_m1_p2_acceptance(
     *,
     golden_path: Path,
     software_commit_sha: str,
     source_root: Path,
     workspace_clean: bool,
-    m1_contracts_unchanged: bool = True,
+    frozen_baselines: Mapping[str, Mapping[str, Any]] | None = None,
     d3_regression_passed: bool = True,
     m1_p1_regression_passed: bool = True,
     write_golden: bool = False,
@@ -451,8 +475,23 @@ def run_m1_p2_acceptance(
         )
     )
     engineering_view = RawIdentityConverter().describe_pulse(1.0)
+    frozen = dict(frozen_baselines or {})
+    p0_frozen = dict(frozen.get("m1_p0") or {})
+    p1_frozen = dict(frozen.get("m1_p1_simulator") or {})
     gates = {
         "workspace_clean": bool(workspace_clean),
+        **_frozen_baseline_gates(
+            baseline_gate="m1_p0_contract_baseline_available",
+            unchanged_gate="m1_p0_contracts_unchanged",
+            error_gate="m1_p0_contract_check_error_free",
+            detail=p0_frozen,
+        ),
+        **_frozen_baseline_gates(
+            baseline_gate="m1_p1_simulator_baseline_available",
+            unchanged_gate="m1_p1_simulator_schemas_unchanged",
+            error_gate="m1_p1_simulator_check_error_free",
+            detail=p1_frozen,
+        ),
         "semantic_fingerprint_complete": (
             semantic_fingerprint_coverage.get("version") == SP_RESULT_FINGERPRINT_VERSION
             and all(
@@ -468,7 +507,6 @@ def run_m1_p2_acceptance(
                 )
             )
         ),
-        "m1_contracts_unchanged": bool(m1_contracts_unchanged),
         "parameter_profile_valid": processor.parameters.configuration_digest == P2C_CONFIGURATION_DIGEST,
         "input_normalization_valid": bool(single),
         "integrity_hard_gates_valid": all(blocked_invariants),
@@ -556,6 +594,7 @@ def run_m1_p2_acceptance(
         "d3_regression_passed": gates["d3_regression_passed"],
         "m1_p1_regression_passed": gates["m1_p1_regression_passed"],
         "software_commit_sha": software_commit_sha,
+        "frozen_baselines": frozen,
         "semantic_fingerprint_version": SP_RESULT_FINGERPRINT_VERSION,
         "semantic_fingerprint_coverage": semantic_fingerprint_coverage,
         "processing": {
