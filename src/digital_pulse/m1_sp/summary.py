@@ -13,6 +13,7 @@ import numpy as np
 from .models import SPProcessingResult
 
 SP_RESULT_FINGERPRINT_VERSION = "sp-result-fingerprint:v2"
+SP_RESULT_FLOAT_SIGNIFICANT_DIGITS = 12
 
 # Explicit top-level inventory: additions to SPProcessingResult must be assigned
 # deliberately to one of these sets instead of silently entering or escaping the
@@ -54,12 +55,39 @@ def canonical_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _canonical_float(value: float) -> float:
+    """Remove platform-specific floating noise without hiding semantic drift."""
+
+    if not np.isfinite(value):
+        return value
+    normalized = float(format(value, f".{SP_RESULT_FLOAT_SIGNIFICANT_DIGITS}g"))
+    return 0.0 if normalized == 0.0 else normalized
+
+
+def _array_content_bytes(array: np.ndarray) -> bytes:
+    if np.issubdtype(array.dtype, np.floating):
+        tokens = []
+        for item in array.ravel(order="C"):
+            scalar = float(item)
+            if np.isnan(scalar):
+                tokens.append("nan")
+            elif np.isposinf(scalar):
+                tokens.append("+inf")
+            elif np.isneginf(scalar):
+                tokens.append("-inf")
+            else:
+                normalized = _canonical_float(scalar)
+                tokens.append(format(normalized, f".{SP_RESULT_FLOAT_SIGNIFICANT_DIGITS}g"))
+        return ("\n".join(tokens) + "\n").encode("ascii")
+    return array.tobytes(order="C")
+
+
 def _array_summary(value: np.ndarray) -> dict[str, Any]:
     array = np.ascontiguousarray(value)
     return {
         "dtype": str(array.dtype),
         "shape": list(array.shape),
-        "sha256": hashlib.sha256(array.tobytes(order="C")).hexdigest(),
+        "sha256": hashlib.sha256(_array_content_bytes(array)).hexdigest(),
     }
 
 
@@ -79,6 +107,27 @@ def _canonical(value: Any) -> Any:
     return value
 
 
+def _semantic_canonical(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return _array_summary(value)
+    if isinstance(value, np.generic):
+        return _semantic_canonical(value.item())
+    if isinstance(value, float):
+        return _canonical_float(value)
+    if isinstance(value, Enum):
+        return value.value
+    if is_dataclass(value):
+        return _semantic_canonical(asdict(value))
+    if isinstance(value, dict):
+        return {
+            str(key): _semantic_canonical(item)
+            for key, item in sorted(value.items())
+        }
+    if isinstance(value, (tuple, list)):
+        return [_semantic_canonical(item) for item in value]
+    return value
+
+
 def sp_result_fingerprint(result: SPProcessingResult) -> dict[str, Any]:
     """Complete machine-semantic payload with explicit provenance exclusions.
 
@@ -93,7 +142,7 @@ def sp_result_fingerprint(result: SPProcessingResult) -> dict[str, Any]:
             "window_id": item.window_id,
             "label": item.label.value,
             "reason_codes": list(item.reason_codes),
-            "metrics": _canonical(dict(item.metrics)),
+            "metrics": _semantic_canonical(dict(item.metrics)),
             "score": item.score,
             "confidence": item.confidence,
             "parameter_version": item.parameter_version,
@@ -115,27 +164,27 @@ def sp_result_fingerprint(result: SPProcessingResult) -> dict[str, Any]:
         "parameter_version": result.parameter_version,
         "parameter_status": result.parameter_status.value,
         "configuration_digest": result.configuration_digest,
-        "engineering_unit_conversion": _canonical(result.engineering_unit_conversion),
+        "engineering_unit_conversion": _semantic_canonical(result.engineering_unit_conversion),
         "stage_result": {
             "processing_status": stage.processing_status,
-            "quality_results": _canonical(stage.quality_results),
+            "quality_results": _semantic_canonical(stage.quality_results),
             "blocking_codes": list(stage.blocking_codes),
             "processing_version": stage.processing_version,
             "parameter_version": stage.parameter_version,
             "parameter_status": stage.parameter_status.value,
             "configuration_digest": stage.configuration_digest,
             "preprocessing": {
-                "integrity": _canonical(preprocessing.integrity),
-                "windows": _canonical(preprocessing.windows),
+                "integrity": _semantic_canonical(preprocessing.integrity),
+                "windows": _semantic_canonical(preprocessing.windows),
                 "processing_version": preprocessing.processing_version,
                 "parameter_version": preprocessing.parameter_version,
                 "parameter_digest": preprocessing.parameter_digest,
             },
-            "metrics_by_window": _canonical(stage.metrics_by_window),
-            "evaluations_by_window": _canonical(stage.evaluations_by_window),
-            "filter_views_by_window": _canonical(stage.filter_views_by_window),
-            "beats_by_window": _canonical(stage.beats_by_window),
-            "reference_by_window": _canonical(stage.reference_by_window),
+            "metrics_by_window": _semantic_canonical(stage.metrics_by_window),
+            "evaluations_by_window": _semantic_canonical(stage.evaluations_by_window),
+            "filter_views_by_window": _semantic_canonical(stage.filter_views_by_window),
+            "beats_by_window": _semantic_canonical(stage.beats_by_window),
+            "reference_by_window": _semantic_canonical(stage.reference_by_window),
         },
     }
 

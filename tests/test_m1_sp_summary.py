@@ -19,6 +19,7 @@ from digital_pulse.m1_sp import (
     sp_result_fingerprint,
     sp_result_sha256,
 )
+from digital_pulse.m1_sp.summary import _array_summary
 
 from _m1_sp_helpers import FIXED_SHA, record_scenario
 
@@ -156,3 +157,11 @@ def test_non_finite_scalar_semantics_fail_canonical_json(normal_result):
     )
     with pytest.raises(ValueError):
         sp_result_sha256(changed)
+
+
+def test_float_array_hash_is_portable_but_detects_semantic_drift():
+    base = np.array([18_391.23058872113, -0.0, np.nan], dtype=np.float64)
+    platform_noise = np.array([18_391.230588721131, 0.0, np.nan], dtype=np.float64)
+    semantic_drift = np.array([18_391.2306, 0.0, np.nan], dtype=np.float64)
+    assert _array_summary(base) == _array_summary(platform_noise)
+    assert _array_summary(base)["sha256"] != _array_summary(semantic_drift)["sha256"]
