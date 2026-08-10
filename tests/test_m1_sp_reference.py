@@ -31,9 +31,52 @@ class M1SPReferenceTests(unittest.TestCase):
         pulse_idx = [p[0] for p in summary.matched_pairs]
         ppg_idx = [p[1] for p in summary.matched_pairs]
         self.assertEqual(pulse_idx, sorted(pulse_idx))
-        self.assertEqual(ppg_idx, sorted(ppg_idx))
+        self.assertTrue(all(ppg_idx[i] < ppg_idx[i + 1] for i in range(len(ppg_idx) - 1)))
         self.assertEqual(len(set(pulse_idx)), 5)
         self.assertEqual(len(set(ppg_idx)), 5)
+        self.assertLessEqual(summary.matched_count, summary.pulse_beat_count)
+        self.assertLessEqual(summary.matched_count, summary.ppg_beat_count)
+
+    def test_overlapping_candidates_keep_ppg_indices_strictly_increasing(self):
+        pulse = (_beat(0, 0), _beat(1, 20_000))
+        # The first pulse prefers PPG 1. For the second pulse, PPG 0 is
+        # slightly nearer the lag-window midpoint than PPG 2, but selecting it
+        # would reverse the reference timeline.
+        ppg = (_beat(0, 50_000), _beat(1, 80_000), _beat(2, 155_000))
+        summary = ReferenceAligner().align(
+            pulse_beats=pulse,
+            ppg_beats=ppg,
+            parameters=default_p2c_parameter_set(),
+            ppg_channel_available=True,
+        )
+
+        pairs = summary.matched_pairs
+        pulse_indices = [p[0] for p in pairs]
+        ppg_indices = [p[1] for p in pairs]
+        self.assertEqual(pairs, ((0, 1, 80.0), (1, 2, 135.0)))
+        self.assertEqual(pulse_indices, sorted(pulse_indices))
+        self.assertTrue(
+            all(ppg_indices[i] < ppg_indices[i + 1] for i in range(len(ppg_indices) - 1))
+        )
+        self.assertEqual(len(set(ppg_indices)), len(ppg_indices))
+
+    def test_does_not_reorder_ppg_to_improve_match_rate(self):
+        pulse = (_beat(0, 0), _beat(1, 20_000))
+        ppg = (_beat(0, 50_000), _beat(1, 80_000))
+        summary = ReferenceAligner().align(
+            pulse_beats=pulse,
+            ppg_beats=ppg,
+            parameters=default_p2c_parameter_set(),
+            ppg_channel_available=True,
+        )
+
+        # A non-monotonic matcher could return (pulse 0, PPG 1) followed by
+        # (pulse 1, PPG 0) and claim a 100% match rate. Ordering takes priority.
+        self.assertEqual(summary.matched_pairs, ((0, 1, 80.0),))
+        self.assertEqual(summary.matched_count, 1)
+        self.assertEqual(summary.match_rate, 0.5)
+        self.assertLessEqual(summary.matched_count, summary.pulse_beat_count)
+        self.assertLessEqual(summary.matched_count, summary.ppg_beat_count)
 
     def test_zero_pulse_beats_match_rate_none(self):
         summary = ReferenceAligner().align(
