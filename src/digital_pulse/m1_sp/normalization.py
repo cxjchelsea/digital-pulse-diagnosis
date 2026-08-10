@@ -16,7 +16,7 @@ from digital_pulse.m1_contracts import (
 )
 
 from .errors import SPError
-from .models import NormalizedChannelSeries, NormalizedSession
+from .models import EngineeringUnitConversionProvenance, NormalizedChannelSeries, NormalizedSession
 
 TRI_TRUE = np.int8(1)
 TRI_FALSE = np.int8(0)
@@ -32,6 +32,9 @@ class EngineeringUnitConverter(Protocol):
 
     def convert_ppg(self, raw: float) -> float: ...
 
+    @property
+    def provenance(self) -> EngineeringUnitConversionProvenance: ...
+
 
 class RawIdentityConverter:
     """Pass-through raw counts; simulation path does not invent engineering units."""
@@ -44,6 +47,19 @@ class RawIdentityConverter:
 
     def convert_ppg(self, raw: float) -> float:
         return float(raw)
+
+    @property
+    def provenance(self) -> EngineeringUnitConversionProvenance:
+        from digital_pulse.m1_contracts import ParameterStatus
+
+        return EngineeringUnitConversionProvenance(
+            converter_name=type(self).__name__,
+            converter_version="raw-identity-v1",
+            parameter_status=ParameterStatus.PENDING_H1_CALIBRATION,
+            raw_identity=True,
+            engineering_units_applied=False,
+            real_calibration_pending=True,
+        )
 
 
 class SyntheticCalibrationAdapter:
@@ -65,6 +81,19 @@ class SyntheticCalibrationAdapter:
 
     def convert_ppg(self, raw: float) -> float:
         return self._inner.convert_ppg(raw)
+
+    @property
+    def provenance(self) -> EngineeringUnitConversionProvenance:
+        from digital_pulse.m1_contracts import ParameterStatus
+
+        return EngineeringUnitConversionProvenance(
+            converter_name=type(self).__name__,
+            converter_version="synthetic-adapter-v1",
+            parameter_status=ParameterStatus.SYNTHETIC_ONLY,
+            raw_identity=True,
+            engineering_units_applied=False,
+            real_calibration_pending=True,
+        )
 
 
 def _tri_state(flag: bool | None) -> np.int8:
@@ -105,6 +134,10 @@ def _channel_series(channels: list[RawChannel], converter) -> NormalizedChannelS
 class InputNormalizer:
     def __init__(self, converter: EngineeringUnitConverter | None = None):
         self._converter = converter or RawIdentityConverter()
+
+    @property
+    def engineering_unit_conversion(self) -> EngineeringUnitConversionProvenance:
+        return self._converter.provenance
 
     def normalize(self, session: M1Session, samples: Iterable[M1Sample]) -> NormalizedSession:
         materialised = list(samples)

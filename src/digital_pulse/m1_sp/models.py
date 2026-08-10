@@ -1,9 +1,10 @@
-"""Internal SP-S1-pre models for M1-P2A/P2B (formal projection uses M1QualityResult)."""
+"""Internal SP processing models (formal projection still uses M1QualityResult)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 from typing import Any, Mapping
 
 import numpy as np
@@ -194,3 +195,69 @@ class SPQualityStageResult:
     filter_views_by_window: Mapping[str, Any] = field(default_factory=dict)
     beats_by_window: Mapping[str, Any] = field(default_factory=dict)
     reference_by_window: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class SPProcessingProvenance:
+    """Execution provenance supplied by the application or acceptance harness.
+
+    The algorithm intentionally does not inspect Git. Packaged deployments may
+    omit ``software_revision``; formal acceptance supplies the exact Git SHA.
+    """
+
+    software_revision: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.software_revision is not None and not re.fullmatch(
+            r"[0-9a-fA-F]{40}", self.software_revision
+        ):
+            raise ValueError("software_revision must be a full 40-character Git SHA")
+
+
+@dataclass(frozen=True, slots=True)
+class EngineeringUnitConversionProvenance:
+    """Truthful conversion state while real H1 calibration remains pending."""
+
+    converter_name: str
+    converter_version: str
+    parameter_status: ParameterStatus
+    raw_identity: bool
+    engineering_units_applied: bool
+    real_calibration_pending: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SPProcessingResult:
+    """Formal internal result returned by :class:`SPProcessor`.
+
+    This is deliberately not an M1 exchange contract and therefore does not
+    change the frozen M1 JSON schemas.
+    """
+
+    session_id: str
+    source_type: SourceType
+    processing_status: str
+    quality_results: tuple[M1QualityResult, ...]
+    windows: tuple[StableWindow, ...]
+    integrity: IntegrityAnalysis
+    metrics_by_window: Mapping[str, QualityMetricsInternal]
+    evaluations_by_window: Mapping[str, QualityEvaluation]
+    filter_views_by_window: Mapping[str, Any]
+    beats_by_window: Mapping[str, Any]
+    reference_by_window: Mapping[str, Any]
+    blocking_codes: tuple[str, ...]
+    limitations: tuple[str, ...]
+    processing_version: str
+    parameter_version: str
+    parameter_status: ParameterStatus
+    parameter_digest: str
+    software_revision: str | None
+    engineering_unit_conversion: EngineeringUnitConversionProvenance
+
+    def __post_init__(self) -> None:
+        if self.processing_status not in {"quality_evaluated", "blocked_before_quality"}:
+            raise ValueError("unsupported SP processing status")
+        if self.processing_status == "quality_evaluated" and not self.quality_results:
+            raise ValueError("quality_evaluated requires at least one quality result")
+        if self.processing_status == "blocked_before_quality" and self.quality_results:
+            raise ValueError("blocked_before_quality requires empty quality results")

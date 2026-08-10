@@ -19,6 +19,8 @@ from .models import (
     QualityEvaluation,
     QualityMetricsInternal,
     SPPreprocessResult,
+    SPProcessingProvenance,
+    SPProcessingResult,
     SPQualityStageResult,
     StableWindow,
 )
@@ -65,6 +67,10 @@ class SPPreprocessor:
     def parameters(self) -> SPParameterSet:
         return self._parameters
 
+    @property
+    def engineering_unit_conversion(self):
+        return self._normalizer.engineering_unit_conversion
+
     def preprocess(self, session: M1Session, samples: Iterable[M1Sample]) -> SPPreprocessResult:
         normalized = self._normalizer.normalize(session, samples)
         integrity = self._integrity.analyze(session, normalized)
@@ -109,6 +115,10 @@ class SPQualityProcessor:
     @property
     def parameters(self) -> SPParameterSet:
         return self._parameters
+
+    @property
+    def engineering_unit_conversion(self):
+        return self._preprocessor.engineering_unit_conversion
 
     def _is_p2c(self) -> bool:
         return self._parameters.parameter_version == SP_PARAMETER_VERSION_P2C
@@ -343,3 +353,53 @@ class SPQualityProcessor:
 
 def create_p2c_processor() -> SPQualityProcessor:
     return SPQualityProcessor(parameters=default_p2c_parameter_set())
+
+
+class SPProcessor:
+    """Formal P2D facade over the frozen P2C processing profile."""
+
+    def __init__(self, *, quality_processor: SPQualityProcessor | None = None):
+        self._quality = quality_processor or create_p2c_processor()
+
+    @property
+    def parameters(self) -> SPParameterSet:
+        return self._quality.parameters
+
+    @property
+    def engineering_unit_conversion(self):
+        return self._quality.engineering_unit_conversion
+
+    def process(
+        self,
+        session: M1Session,
+        samples: Iterable[M1Sample],
+        *,
+        provenance: SPProcessingProvenance | None = None,
+    ) -> SPProcessingResult:
+        execution = provenance or SPProcessingProvenance()
+        stage = self._quality.process(session, samples)
+        preprocessing = stage.preprocessing
+        limitations = tuple(
+            item.value if hasattr(item, "value") else str(item) for item in session.limitations
+        )
+        return SPProcessingResult(
+            session_id=session.session_id,
+            source_type=preprocessing.normalized.source_type,
+            processing_status=stage.processing_status,
+            quality_results=stage.quality_results,
+            windows=preprocessing.windows.windows,
+            integrity=preprocessing.integrity,
+            metrics_by_window=stage.metrics_by_window,
+            evaluations_by_window=stage.evaluations_by_window,
+            filter_views_by_window=stage.filter_views_by_window,
+            beats_by_window=stage.beats_by_window,
+            reference_by_window=stage.reference_by_window,
+            blocking_codes=stage.blocking_codes,
+            limitations=limitations,
+            processing_version=stage.processing_version,
+            parameter_version=stage.parameter_version,
+            parameter_status=stage.parameter_status,
+            parameter_digest=stage.configuration_digest,
+            software_revision=execution.software_revision,
+            engineering_unit_conversion=self._quality.engineering_unit_conversion,
+        )

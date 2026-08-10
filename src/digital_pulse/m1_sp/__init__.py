@@ -1,7 +1,4 @@
-"""M1-P2 SP-S1-pre package (P2A preprocess + P2B quality + P2C beat/reference).
-
-Does not implement INT decisions, APP persistence, or formal M1-P2 acceptance.
-"""
+"""M1-P2 SP package (P2A/P2B/P2C algorithms plus the P2D facade)."""
 
 from .beats import BeatAnalysis, BeatCandidate, BeatDetector, BeatSegment, BeatSegmenter, analyze_beats
 from .errors import SPError
@@ -10,6 +7,7 @@ from .integrity import IntegrityAnalyzer
 from .metrics import RawQualityMetrics
 from .models import (
     BeatReferenceBundle,
+    EngineeringUnitConversionProvenance,
     IntegrityAnalysis,
     IntegrityConsistency,
     NormalizedChannelSeries,
@@ -18,11 +16,13 @@ from .models import (
     QualityEvaluation,
     QualityMetricsInternal,
     SPPreprocessResult,
+    SPProcessingProvenance,
+    SPProcessingResult,
     SPQualityStageResult,
     StableWindow,
     StableWindowResult,
 )
-from .normalization import InputNormalizer, RawIdentityConverter
+from .normalization import EngineeringUnitConverter, InputNormalizer, RawIdentityConverter, SyntheticCalibrationAdapter
 from .observations import SequenceObservations, TimestampObservations, observe_sequence, observe_timestamps
 from .parameters import (
     METRIC_FORMULA_VERSIONS,
@@ -46,7 +46,7 @@ from .parameters import (
     default_p2b_parameter_set,
     default_p2c_parameter_set,
 )
-from .processor import SPPreprocessor, SPQualityProcessor, create_p2c_processor
+from .processor import SPPreprocessor, SPProcessor, SPQualityProcessor, create_p2c_processor
 from .projection import M1QualityProjector
 from .quality import (
     PROCESSING_STATUS_BLOCKED,
@@ -55,6 +55,7 @@ from .quality import (
     sort_reason_codes,
 )
 from .reference import PPGDetector, ReferenceAligner, ReferenceMatchSummary, analyze_reference
+from .summary import canonical_json_bytes, compare_sp_results, sp_result_fingerprint, summarize_sp_result
 from .windows import StableWindowSelector
 
 __all__ = [
@@ -80,6 +81,8 @@ __all__ = [
     "BeatSegment",
     "BeatSegmenter",
     "CausalFIRFilter",
+    "EngineeringUnitConversionProvenance",
+    "EngineeringUnitConverter",
     "FilterBank",
     "FilteredSeries",
     "InputNormalizer",
@@ -109,18 +112,26 @@ __all__ = [
     "SPParameterClass",
     "SPParameterSet",
     "SPPreprocessResult",
+    "SPProcessingProvenance",
+    "SPProcessingResult",
+    "SPProcessor",
     "SPPreprocessor",
     "SPQualityProcessor",
     "SPQualityStageResult",
     "StableWindow",
     "StableWindowResult",
     "StableWindowSelector",
+    "SyntheticCalibrationAdapter",
     "analyze_beats",
     "analyze_reference",
+    "canonical_json_bytes",
+    "compare_sp_results",
     "create_p2c_processor",
     "default_p2a_parameter_set",
     "default_p2b_parameter_set",
     "default_p2c_parameter_set",
     "design_lowpass_fir",
     "sort_reason_codes",
+    "sp_result_fingerprint",
+    "summarize_sp_result",
 ]
