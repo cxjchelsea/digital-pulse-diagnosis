@@ -1,0 +1,1287 @@
+{
+  "characterization_version": "p2b-0.2.0",
+  "processing_version": "0.2.0-p2b",
+  "parameter_version": "0.2.0-p2b",
+  "configuration_digest": "c34fe3b60b25a9f496ddc3172084af379a605b7c2a73659ece83f02e723dea29",
+  "seed_set": [
+    1001,
+    1002,
+    1003,
+    1004,
+    1005
+  ],
+  "metric_formula_versions": {
+    "valid_fraction": "valid_fraction:v1",
+    "clipping_fraction": "clipping_fraction:v1",
+    "pulse_std_raw": "pulse_std_raw:v1",
+    "baseline_drift_raw": "baseline_drift_raw:v1",
+    "motion_metric": "motion_metric:v1",
+    "load_variability": "load_variability:v1"
+  },
+  "case_metric_ranges": {
+    "normal_high_quality": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 661.1518256731958,
+        "max": 666.6991007613555,
+        "mean": 663.750929944183
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 24.5,
+        "max": 98.5,
+        "mean": 60.8
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 38.89694847423712,
+        "max": 39.976988494247124,
+        "mean": 39.27273636818409
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 80000.0,
+        "max": 80000.0,
+        "mean": 80000.0
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 11.558172822725915,
+        "max": 12.367699856885274,
+        "mean": 12.025109006722861
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "weak_signal": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 528.6776905107213,
+        "max": 570.0684813140874,
+        "mean": 551.6281805587689
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 283.0,
+        "max": 303.0,
+        "mean": 291.1
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 23.554277138569283,
+        "max": 25.009504752376188,
+        "mean": 24.628214107053527
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 80000.0,
+        "max": 80000.0,
+        "mean": 80000.0
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 11.558172822725915,
+        "max": 12.367699856885274,
+        "mean": 12.025109006722861
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "no_contact": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 544.3086450238964,
+        "max": 585.8298345917098,
+        "mean": 567.2032551155768
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 345.0,
+        "max": 365.0,
+        "mean": 352.6
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 24.404702351175587,
+        "max": 26.402701350675336,
+        "mean": 25.896448224112056
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 40038.5,
+        "max": 40042.0,
+        "mean": 40040.1
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 39939.685906310966,
+        "max": 39940.21445713478,
+        "mean": 39939.93100881388
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "upper_saturation": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 6710.653109822843,
+        "max": 6735.315020603546,
+        "mean": 6722.1906505804
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.5,
+        "max": 0.5,
+        "mean": 0.5
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 13645.0,
+        "max": 13722.5,
+        "mean": 13679.5
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 32.98999499749875,
+        "max": 33.77688844422211,
+        "mean": 33.30375187593797
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 80000.0,
+        "max": 80000.0,
+        "mean": 80000.0
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 11.558172822725915,
+        "max": 12.367699856885274,
+        "mean": 12.025109006722861
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "lower_saturation": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 7794.7884465691395,
+        "max": 7823.761254050062,
+        "mean": 7810.323091812567
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.5,
+        "max": 0.5,
+        "mean": 0.5
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 15345.0,
+        "max": 15365.0,
+        "mean": 15352.4
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 35.19209604802401,
+        "max": 36.93596798399199,
+        "mean": 36.43051525762881
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 80000.0,
+        "max": 80000.0,
+        "mean": 80000.0
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 11.558172822725915,
+        "max": 12.367699856885274,
+        "mean": 12.025109006722861
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "baseline_drift": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 1059.7771059367863,
+        "max": 1109.2308784540755,
+        "mean": 1081.05387018388
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 2113.5,
+        "max": 2197.5,
+        "mean": 2148.8
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 39.969484742371186,
+        "max": 41.23561780890445,
+        "mean": 40.45952976488244
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 80000.0,
+        "max": 80000.0,
+        "mean": 80000.0
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 11.558172822725915,
+        "max": 12.367699856885274,
+        "mean": 12.025109006722861
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "motion_artifact": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 1409.13087495227,
+        "max": 1439.3952194514716,
+        "mean": 1419.8185363420444
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 276.5,
+        "max": 391.5,
+        "mean": 314.8
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 237.11555777888944,
+        "max": 250.61080540270135,
+        "mean": 246.0207103551776
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 79999.0,
+        "max": 80000.0,
+        "mean": 79999.8
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 4238.279555055801,
+        "max": 4305.112848118038,
+        "mean": 4270.898405443489
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "unstable_load": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 737.5931371528615,
+        "max": 756.5108229437303,
+        "mean": 746.8380605294735
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 176.5,
+        "max": 415.5,
+        "mean": 321.1
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 41.47323661830915,
+        "max": 43.02751375687844,
+        "mean": 42.07413706853426
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 79999.0,
+        "max": 80000.0,
+        "mean": 79999.4
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 8912.60273628808,
+        "max": 8913.389836349805,
+        "mean": 8913.017060233387
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      }
+    },
+    "insufficient_duration": {
+      "pulse_std_raw": {
+        "n": 5,
+        "min": 691.9965621301886,
+        "max": 765.5582956248335,
+        "mean": 735.6308756930039
+      },
+      "clipping_fraction": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "baseline_drift_raw": {
+        "n": 5,
+        "min": 1177.0,
+        "max": 1344.5,
+        "mean": 1262.4
+      },
+      "motion_metric": {
+        "n": 5,
+        "min": 41.72289156626506,
+        "max": 45.032128514056225,
+        "mean": 43.3566265060241
+      },
+      "load_median_raw": {
+        "n": 5,
+        "min": 79998.0,
+        "max": 80001.0,
+        "mean": 79999.6
+      },
+      "load_std_raw": {
+        "n": 5,
+        "min": 11.003563059300383,
+        "max": 12.898622562118794,
+        "mean": 11.609587723835997
+      },
+      "valid_duration_s": {
+        "n": 5,
+        "min": 0.996,
+        "max": 0.996,
+        "mean": 0.9960000000000001
+      }
+    }
+  },
+  "thresholds": [
+    {
+      "parameter": "no_contact_load_max_raw",
+      "value": 50000.0,
+      "operator": "<=",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 80000.0,
+        "max": 80000.0,
+        "mean": 80000.0
+      },
+      "rationale": "load_median_raw <= 50000 → contact-absent zone. normal≈80000; no_contact≈40040 (seeds 1001-1005)."
+    },
+    {
+      "parameter": "near_constant_std_max_raw",
+      "value": 600.0,
+      "operator": "<=",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 661.1518256731958,
+        "max": 666.6991007613555,
+        "mean": 663.750929944183
+      },
+      "rationale": "pulse_std_raw <= 600 for near-constant evidence in no_contact AND. no_contact≈544-586; normal≈661-667."
+    },
+    {
+      "parameter": "weak_signal_std_max_raw",
+      "value": 620.0,
+      "operator": "<=",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 661.1518256731958,
+        "max": 666.6991007613555,
+        "mean": 663.750929944183
+      },
+      "rationale": "pulse_std_raw <= 620 → weak_signal after higher-precedence rules. weak≈529-570; normal≈661-667."
+    },
+    {
+      "parameter": "clipping_fraction_max",
+      "value": 0.0,
+      "operator": ">",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "rationale": "clipping_fraction > 0.0 → saturated. sat scenarios≈0.5; others≈0.0."
+    },
+    {
+      "parameter": "baseline_drift_max_raw",
+      "value": 800.0,
+      "operator": ">=abs",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 24.5,
+        "max": 98.5,
+        "mean": 60.8
+      },
+      "rationale": "abs(baseline_drift_raw) >= 800 → unstable_baseline. baseline segment-median excursion≈2113-2197; normal≈24-99; motion≈276-392; weak≈283-303."
+    },
+    {
+      "parameter": "motion_metric_max",
+      "value": 100.0,
+      "operator": ">=",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 38.89694847423712,
+        "max": 39.976988494247124,
+        "mean": 39.27273636818409
+      },
+      "rationale": "motion_metric >= 100 → motion_artifact. motion mean|Δpulse|≈237-251; normal≈39-40; baseline≈40-41; unstable_load≈41-43."
+    },
+    {
+      "parameter": "unstable_load_std_max_raw",
+      "value": 1000.0,
+      "operator": ">=",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 11.558172822725915,
+        "max": 12.367699856885274,
+        "mean": 12.025109006722861
+      },
+      "rationale": "load_std_raw >= 1000 → internal UNSTABLE_CONTACT_LOAD → manual_review. unstable_load≈8913; normal≈12; motion≈4238 but motion precedes."
+    },
+    {
+      "parameter": "min_valid_duration_s",
+      "value": 2.0,
+      "operator": "<",
+      "parameter_class": "simulation_only",
+      "normal_range": {
+        "n": 5,
+        "min": 7.996,
+        "max": 7.996,
+        "mean": 7.996
+      },
+      "rationale": "valid_duration_s < 2.0 → insufficient_duration/too_short. insufficient_duration≈0.996; normal≈7.996. Not a clinical minimum."
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 661.1518256731958,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -24.5,
+      "motion_metric": 39.976988494247124,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.116548178008456,
+      "load_range_raw": 84.0
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 666.162790178009,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -79.5,
+      "motion_metric": 39.59179589794898,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.367699856885274,
+      "load_range_raw": 79.0
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 661.6079629138392,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 26.5,
+      "motion_metric": 38.89694847423712,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.259537960298504,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 666.6991007613555,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 98.5,
+      "motion_metric": 38.89694847423712,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.823586215696151,
+      "load_range_raw": 78.0
+    },
+    {
+      "case_id": "normal_high_quality",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "acceptable",
+      "reason_codes": [],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 663.1329701945155,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -75.0,
+      "motion_metric": 39.00100050025012,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.558172822725915,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 532.9167284857926,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -287.0,
+      "motion_metric": 24.965482741370685,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.116548178008456,
+      "load_range_raw": 84.0
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 569.0381437722343,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 291.0,
+      "motion_metric": 25.009504752376188,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.367699856885274,
+      "load_range_raw": 79.0
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 528.6776905107213,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 283.0,
+      "motion_metric": 23.554277138569283,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.259537960298504,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 570.0684813140874,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 303.0,
+      "motion_metric": 24.6128064032016,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.823586215696151,
+      "load_range_raw": 78.0
+    },
+    {
+      "case_id": "weak_signal",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "weak_signal",
+      "reason_codes": [
+        "weak_amplitude"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 557.4398587110093,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -291.5,
+      "motion_metric": 24.998999499749875,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.558172822725915,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "no_contact",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "no_contact",
+      "reason_codes": [
+        "near_constant",
+        "no_contact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 548.4867061176142,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -348.0,
+      "motion_metric": 25.975987993997,
+      "load_median_raw": 40038.5,
+      "load_std_raw": 39940.21445713478,
+      "load_range_raw": 79914.0
+    },
+    {
+      "case_id": "no_contact",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "no_contact",
+      "reason_codes": [
+        "near_constant",
+        "no_contact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 584.5172500029405,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 352.5,
+      "motion_metric": 26.376188094047023,
+      "load_median_raw": 40040.0,
+      "load_std_raw": 39940.00749569857,
+      "load_range_raw": 79919.0
+    },
+    {
+      "case_id": "no_contact",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "no_contact",
+      "reason_codes": [
+        "near_constant",
+        "no_contact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 544.3086450238964,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 345.0,
+      "motion_metric": 24.404702351175587,
+      "load_median_raw": 40039.5,
+      "load_std_raw": 39939.685906310966,
+      "load_range_raw": 79921.0
+    },
+    {
+      "case_id": "no_contact",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "no_contact",
+      "reason_codes": [
+        "near_constant",
+        "no_contact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 585.8298345917098,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 365.0,
+      "motion_metric": 26.322661330665333,
+      "load_median_raw": 40042.0,
+      "load_std_raw": 39939.8643976024,
+      "load_range_raw": 79916.0
+    },
+    {
+      "case_id": "no_contact",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "no_contact",
+      "reason_codes": [
+        "near_constant",
+        "no_contact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 572.8738398417229,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -352.5,
+      "motion_metric": 26.402701350675336,
+      "load_median_raw": 40040.5,
+      "load_std_raw": 39939.88278732269,
+      "load_range_raw": 79912.0
+    },
+    {
+      "case_id": "upper_saturation",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "upper_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 6731.954720054922,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": -13669.0,
+      "motion_metric": 33.49674837418709,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.116548178008456,
+      "load_range_raw": 84.0
+    },
+    {
+      "case_id": "upper_saturation",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "upper_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 6710.653536058616,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": 13680.0,
+      "motion_metric": 33.77688844422211,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.367699856885274,
+      "load_range_raw": 79.0
+    },
+    {
+      "case_id": "upper_saturation",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "upper_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 6735.315020603546,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": 13681.0,
+      "motion_metric": 32.98999499749875,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.259537960298504,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "upper_saturation",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "upper_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 6710.653109822843,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": 13645.0,
+      "motion_metric": 33.26113056528264,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.823586215696151,
+      "load_range_raw": 78.0
+    },
+    {
+      "case_id": "upper_saturation",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "upper_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 6722.376866362075,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": -13722.5,
+      "motion_metric": 32.99399699849925,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.558172822725915,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "lower_saturation",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "lower_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 7798.503372626682,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": -15347.0,
+      "motion_metric": 36.71335667833917,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.116548178008456,
+      "load_range_raw": 84.0
+    },
+    {
+      "case_id": "lower_saturation",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "lower_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 7823.570724484824,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": 15352.5,
+      "motion_metric": 36.823411705852926,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.367699856885274,
+      "load_range_raw": 79.0
+    },
+    {
+      "case_id": "lower_saturation",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "lower_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 7794.7884465691395,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": 15345.0,
+      "motion_metric": 35.19209604802401,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.259537960298504,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "lower_saturation",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "lower_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 7823.761254050062,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": 15365.0,
+      "motion_metric": 36.48774387193597,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.823586215696151,
+      "load_range_raw": 78.0
+    },
+    {
+      "case_id": "lower_saturation",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "saturated",
+      "reason_codes": [
+        "lower_saturation"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 7810.991661332127,
+      "clipping_fraction": 0.5,
+      "baseline_drift_raw": -15352.5,
+      "motion_metric": 36.93596798399199,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.558172822725915,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1101.4381620027518,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -2134.5,
+      "motion_metric": 41.23561780890445,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.116548178008456,
+      "load_range_raw": 84.0
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1059.7771059367863,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 2148.5,
+      "motion_metric": 40.79239619809905,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.367699856885274,
+      "load_range_raw": 79.0
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1109.2308784540755,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 2150.0,
+      "motion_metric": 40.109554777388695,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 12.259537960298504,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1060.106627104557,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 2113.5,
+      "motion_metric": 39.969484742371186,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.823586215696151,
+      "load_range_raw": 78.0
+    },
+    {
+      "case_id": "baseline_drift",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "unstable_baseline",
+      "reason_codes": [
+        "unstable_baseline"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1074.7165774212287,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -2197.5,
+      "motion_metric": 40.19059529764883,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.558172822725915,
+      "load_range_raw": 90.0
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1409.13087495227,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -280.0,
+      "motion_metric": 237.11555777888944,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 4273.665036855252,
+      "load_range_raw": 27260.0
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1439.3952194514716,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 334.0,
+      "motion_metric": 248.49124562281142,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 4252.739171539885,
+      "load_range_raw": 28452.0
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1416.9942782633245,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 292.0,
+      "motion_metric": 244.86093046523263,
+      "load_median_raw": 79999.0,
+      "load_std_raw": 4284.695415648468,
+      "load_range_raw": 28088.0
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1418.8766569335758,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 276.5,
+      "motion_metric": 250.61080540270135,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 4305.112848118038,
+      "load_range_raw": 28556.0
+    },
+    {
+      "case_id": "motion_artifact",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "motion_artifact",
+      "reason_codes": [
+        "motion_artifact"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 1414.6956521095801,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -391.5,
+      "motion_metric": 249.02501250625312,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 4238.279555055801,
+      "load_range_raw": 28888.0
+    },
+    {
+      "case_id": "unstable_load",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "manual_review_required",
+      "reason_codes": [
+        "manual_review_requested"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 748.9161444641182,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 229.0,
+      "motion_metric": 43.02751375687844,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 8912.826509176031,
+      "load_range_raw": 36016.0
+    },
+    {
+      "case_id": "unstable_load",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "manual_review_required",
+      "reason_codes": [
+        "manual_review_requested"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 743.8940220419505,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 415.5,
+      "motion_metric": 42.13806903451726,
+      "load_median_raw": 79999.0,
+      "load_std_raw": 8913.389836349805,
+      "load_range_raw": 36044.0
+    },
+    {
+      "case_id": "unstable_load",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "manual_review_required",
+      "reason_codes": [
+        "manual_review_requested"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 756.5108229437303,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 176.5,
+      "motion_metric": 41.928464232116056,
+      "load_median_raw": 79999.0,
+      "load_std_raw": 8912.60273628808,
+      "load_range_raw": 36017.0
+    },
+    {
+      "case_id": "unstable_load",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "manual_review_required",
+      "reason_codes": [
+        "manual_review_requested"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 747.276176044707,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 404.0,
+      "motion_metric": 41.47323661830915,
+      "load_median_raw": 79999.0,
+      "load_std_raw": 8913.15099923533,
+      "load_range_raw": 36035.0
+    },
+    {
+      "case_id": "unstable_load",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "manual_review_required",
+      "reason_codes": [
+        "manual_review_requested"
+      ],
+      "valid_duration_s": 7.996,
+      "pulse_std_raw": 737.5931371528615,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": 380.5,
+      "motion_metric": 41.80340170085042,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 8913.115220117697,
+      "load_range_raw": 36028.0
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1001,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "valid_duration_s": 0.996,
+      "pulse_std_raw": 734.0543279730731,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -1226.0,
+      "motion_metric": 43.05220883534137,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.003563059300383,
+      "load_range_raw": 71.0
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1002,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "valid_duration_s": 0.996,
+      "pulse_std_raw": 755.469496289559,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -1297.0,
+      "motion_metric": 45.032128514056225,
+      "load_median_raw": 79999.0,
+      "load_std_raw": 12.898622562118794,
+      "load_range_raw": 75.0
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1003,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "valid_duration_s": 0.996,
+      "pulse_std_raw": 765.5582956248335,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -1344.5,
+      "motion_metric": 44.12449799196787,
+      "load_median_raw": 79998.0,
+      "load_std_raw": 11.20798572447342,
+      "load_range_raw": 58.0
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1004,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "valid_duration_s": 0.996,
+      "pulse_std_raw": 731.0756964473651,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -1267.5,
+      "motion_metric": 42.85140562248996,
+      "load_median_raw": 80001.0,
+      "load_std_raw": 11.8172457027854,
+      "load_range_raw": 70.0
+    },
+    {
+      "case_id": "insufficient_duration",
+      "seed": 1005,
+      "window_count": 1,
+      "label": "insufficient_duration",
+      "reason_codes": [
+        "too_short"
+      ],
+      "valid_duration_s": 0.996,
+      "pulse_std_raw": 691.9965621301886,
+      "clipping_fraction": 0.0,
+      "baseline_drift_raw": -1177.0,
+      "motion_metric": 41.72289156626506,
+      "load_median_raw": 80000.0,
+      "load_std_raw": 11.120521570501987,
+      "load_range_raw": 60.0
+    }
+  ]
+}

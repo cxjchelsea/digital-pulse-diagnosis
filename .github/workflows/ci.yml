@@ -39,10 +39,47 @@ jobs:
           python -c "import json; from pathlib import Path;
           d=json.loads(Path('artifacts/d3-acceptance/acceptance.json').read_text(encoding='utf-8'));
           assert d.get('formal_acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
           assert d.get('evidence_source') == 'github-actions';
+          assert d.get('acceptance_gates', {}).get('ci_sha_matches') is True;
           assert d.get('config_hashes', {}).get('combined_sha256');
           assert len(d.get('traceability_D3_T01_T24') or []) == 24;
           assert all(item.get('passed') for item in d['traceability_D3_T01_T24'])"
+
+      - name: Upload D3 acceptance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: d3-acceptance
+          path: artifacts/d3-acceptance/
+
+      - name: Preserve D3 acceptance for exact-head gates
+        run: |
+          test -f artifacts/d3-acceptance/acceptance.json
+          mkdir -p "$RUNNER_TEMP/d3-acceptance"
+          cp artifacts/d3-acceptance/acceptance.json \
+            "$RUNNER_TEMP/d3-acceptance/acceptance.json"
+
+      - name: Checkout exact source head for M1 gates
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Restore D3 acceptance evidence
+        run: |
+          mkdir -p artifacts/d3-acceptance
+          cp "$RUNNER_TEMP/d3-acceptance/acceptance.json" \
+            artifacts/d3-acceptance/acceptance.json
+          test -f artifacts/d3-acceptance/acceptance.json
+
+      - name: Verify exact source head
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          echo "expected=$EXPECTED_HEAD_SHA"
+          echo "actual=$ACTUAL_SHA"
+          test "$ACTUAL_SHA" = "$EXPECTED_HEAD_SHA"
 
       - name: Run and assert M1-P1 formal acceptance
         run: >
@@ -60,11 +97,43 @@ jobs:
           assert d.get('d3_regression_skipped') is False;
           assert d.get('failed_gates') == []"
 
-      - name: Upload D3 acceptance artifacts
+      - name: Run M1-P2 formal acceptance
+        run: python scripts/generate_m1_p2_acceptance.py
+
+      - name: Assert M1-P2 formal acceptance
+        run: >
+          python -c "import json, subprocess; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p2-acceptance.json').read_text(encoding='utf-8'));
+          expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('software_commit_sha') == expected_sha;
+          assert d.get('single_attempt_cases') == 16;
+          assert d.get('multi_attempt_cases') == 2;
+          assert d.get('quality_schema_valid') is True;
+          assert d.get('oracle_isolation_verified') is True;
+          assert d.get('direct_replay_equivalent') is True;
+          assert d.get('deterministic_repeat_match') is True;
+          assert d.get('golden_summaries_match') is True;
+          assert d.get('software_sha_tracked') is True;
+          assert d.get('engineering_unit_interface_valid') is True;
+          assert d.get('d3_regression_passed') is True;
+          assert d.get('m1_p1_regression_passed') is True;
+          assert d.get('scenario_registry', {}).get('single_attempt_count') == 16;
+          assert d.get('scenario_registry', {}).get('multi_attempt_count') == 2;
+          assert d.get('scenario_registry', {}).get('total_case_count') == 18;
+          assert d.get('replay', {}).get('verified') is True;
+          assert d.get('determinism', {}).get('verified') is True;
+          assert d.get('golden', {}).get('matched') is True;
+          assert d.get('oracle', {}).get('production_oracle_isolated') is True;
+          assert d.get('oracle', {}).get('delete_verified') is True;
+          assert d.get('oracle', {}).get('tamper_verified') is True"
+
+      - name: Upload M1-P2 acceptance artifact
         uses: actions/upload-artifact@v4
         with:
-          name: d3-acceptance
-          path: artifacts/d3-acceptance/
+          name: m1-p2-acceptance
+          path: artifacts/acceptance/m1-p2-acceptance.json
 
   web:
     name: Web production build
@@ -74,6 +143,8 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
