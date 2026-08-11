@@ -114,6 +114,21 @@ def test_bad_supplied_checksum_is_rejected(tmp_path: Path):
     assert caught.value.code == "raw_asset_corrupted"
 
 
+def test_registration_cannot_claim_unverified_hardware_seal(tmp_path: Path):
+    _, recorded = record_session(tmp_path)
+    evidence = RegisteredChecksum(
+        sha256=recorded.sample_stream_sha256 or "",
+        size_bytes=(recorded.session_path / recorded.samples_relative_path).stat().st_size,
+        provenance=ChecksumProvenance(ChecksumSource.HARDWARE_SEAL, FIXED_TIME),
+    )
+    with pytest.raises(M1AppError) as caught:
+        loader(tmp_path).register(
+            recorded.session_id,
+            supplied_checksums={AppAssetRole.RAW_SAMPLES: evidence},
+        )
+    assert caught.value.code == "manifest_invalid"
+
+
 def test_app_manifest_records_exact_registered_bytes(tmp_path: Path):
     _, recorded = record_session(tmp_path)
     loaded = loader(tmp_path).register(recorded.session_id)
@@ -172,3 +187,106 @@ def test_app_manifest_cannot_redirect_a_raw_role_to_another_session_file(tmp_pat
     with pytest.raises(M1AppError) as caught:
         loader(tmp_path).load(recorded.session_id)
     assert caught.value.code == "manifest_invalid"
+
+
+def test_root_manifest_cannot_redirect_frozen_raw_role_before_registration(tmp_path: Path):
+    _, recorded = record_session(tmp_path)
+    alternate = recorded.session_path / "alternate-samples.jsonl"
+    alternate.write_bytes((recorded.session_path / "samples.jsonl").read_bytes())
+    root_manifest = recorded.session_path / "manifest.json"
+    payload = json.loads(root_manifest.read_text(encoding="utf-8"))
+    samples = next(item for item in payload["files"] if item["role"] == "samples")
+    samples["relative_path"] = "alternate-samples.jsonl"
+    root_manifest.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
+    with pytest.raises(M1AppError) as caught:
+        loader(tmp_path).register(recorded.session_id)
+    assert caught.value.code == "manifest_invalid"
+
+
+@pytest.mark.parametrize("stream", ["samples.jsonl", "events.jsonl"])
+def test_duplicate_json_keys_in_raw_stream_fail_closed(tmp_path: Path, stream: str):
+    _, recorded = record_session(tmp_path)
+    path = recorded.session_path / stream
+    if stream == "samples.jsonl":
+        lines = path.read_text(encoding="utf-8").splitlines()
+        payload = json.loads(lines[0])
+        lines[0] = '{"session_id":' + json.dumps(payload["session_id"]) + "," + lines[0][1:]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    else:
+        path.write_bytes(path.read_bytes() + b'{"kind":"A","kind":"B"}\n')
+    with pytest.raises(M1AppError) as caught:
+        loader(tmp_path).register(recorded.session_id)
+    assert caught.value.code == "raw_asset_corrupted"
+
+
+def test_truncated_raw_line_and_wrong_sample_session_identity_fail_closed(tmp_path: Path):
+    first_root = tmp_path / "truncated"; first_root.mkdir()
+    _, first = record_session(first_root)
+    samples = first.session_path / "samples.jsonl"
+    samples.write_bytes(samples.read_bytes() + b'{"')
+    with pytest.raises(M1AppError) as truncated:
+        loader(first_root).register(first.session_id)
+    assert truncated.value.code == "raw_asset_corrupted"
+
+    second_root = tmp_path / "identity"; second_root.mkdir()
+    _, second = record_session(second_root)
+    samples = second.session_path / "samples.jsonl"
+    rows = [json.loads(line) for line in samples.read_text(encoding="utf-8").splitlines()]
+    rows[0]["session_id"] = "other-session"
+    samples.write_text("\n".join(json.dumps(row, separators=(",", ":")) for row in rows) + "\n", encoding="utf-8")
+    with pytest.raises(M1AppError) as identity:
+        loader(second_root).register(second.session_id)
+    assert identity.value.code == "raw_asset_corrupted"
+
+
+def test_oracle_delete_and_tamper_do_not_change_registration_truth(tmp_path: Path):
+    _, recorded = record_session(tmp_path)
+    scenario = recorded.session_path / "scenario.json"
+    expected = recorded.session_path / "expected.json"
+    if scenario.exists():
+        scenario.unlink()
+    if expected.exists():
+        expected.write_text('{"tampered":true}\n', encoding="utf-8")
+    loaded = loader(tmp_path).register(recorded.session_id)
+    assert {item.relative_path for item in loaded.app_manifest.source_assets} == {
+        "manifest.json",
+        "samples.jsonl",
+        "events.jsonl",
+    }
+
+
+def test_duplicate_root_manifest_key_is_rejected_by_production_registration(tmp_path: Path):
+    _, recorded = record_session(tmp_path)
+    root_manifest = recorded.session_path / "manifest.json"
+    text = root_manifest.read_text(encoding="utf-8")
+    root_manifest.write_text('{"session_id":"attacker",' + text[1:], encoding="utf-8")
+    with pytest.raises(M1AppError) as caught:
+        loader(tmp_path).register(recorded.session_id)
+    assert caught.value.code == "manifest_invalid"
+
+
+def test_duplicate_app_manifest_key_is_rejected_by_production_loader(tmp_path: Path):
+    _, recorded = record_session(tmp_path)
+    loader(tmp_path).register(recorded.session_id)
+    app_manifest = recorded.session_path / "app" / "manifest.json"
+    text = app_manifest.read_text(encoding="utf-8")
+    app_manifest.write_text('{"session_id":"attacker",' + text[1:], encoding="utf-8")
+    with pytest.raises(M1AppError) as caught:
+        loader(tmp_path).load(recorded.session_id)
+    assert caught.value.code == "manifest_invalid"
+
+
+def test_checksum_permission_error_is_sanitized(tmp_path: Path, monkeypatch):
+    _, recorded = record_session(tmp_path)
+    loader(tmp_path).register(recorded.session_id)
+    import digital_pulse.m1_app.checksums as checksums
+
+    monkeypatch.setattr(
+        checksums,
+        "sha256_file",
+        lambda _: (_ for _ in ()).throw(PermissionError(str(tmp_path / "secret"))),
+    )
+    with pytest.raises(M1AppError) as caught:
+        loader(tmp_path).load(recorded.session_id)
+    assert caught.value.code == "asset_unreadable"
+    assert str(tmp_path) not in str(caught.value.to_public_dict())

@@ -18,6 +18,7 @@ from digital_pulse.m1_simulator.replay import ReplayDataSource
 
 from .checksums import RegisteredChecksum, build_asset_ref, verify_asset_ref
 from .errors import M1AppError
+from .locking import app_session_lock
 from .manifest import load_app_manifest, loads_strict_json, write_app_manifest_atomic
 from .models import (
     APP_MANIFEST_SCHEMA_VERSION,
@@ -30,7 +31,7 @@ from .models import (
     ChecksumSource,
     RawIntegrityAssurance,
 )
-from .paths import SafeSessionPath, resolve_session_root
+from .paths import SafeSessionPath, _is_link_or_junction, resolve_session_root
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,26 @@ def _file_ref(session: M1Session, role: FileRole) -> str:
     if len(matches) != 1:
         code = "raw_asset_missing" if not matches else "manifest_invalid"
         raise M1AppError(code, "Root manifest must contain exactly one required file role.", asset=role.value)
+    allowed = {
+        FileRole.SAMPLES: {"samples.jsonl", "samples.partial.jsonl"},
+        FileRole.EVENTS: {"events.jsonl"},
+    }[role]
+    if matches[0] not in allowed:
+        raise M1AppError(
+            "manifest_invalid",
+            "Root manifest file role does not use its frozen acquisition path.",
+            asset=role.value,
+        )
+    if (
+        role is FileRole.SAMPLES
+        and matches[0] == "samples.partial.jsonl"
+        and session.integrity_summary.raw_persistence_status.value == "ok"
+    ):
+        raise M1AppError(
+            "manifest_invalid",
+            "Complete raw persistence cannot use the partial sample path.",
+            asset=role.value,
+        )
     return matches[0]
 
 
@@ -76,6 +97,20 @@ class AppSessionLoader:
         supplied_checksums: Mapping[AppAssetRole, RegisteredChecksum] | None = None,
     ) -> LoadedAppSession:
         session_root = resolve_session_root(self._sessions_root, session_id)
+        with app_session_lock(session_root):
+            return self._register_locked(
+                session_root,
+                session_id,
+                supplied_checksums=supplied_checksums,
+            )
+
+    def _register_locked(
+        self,
+        session_root: Path,
+        session_id: str,
+        *,
+        supplied_checksums: Mapping[AppAssetRole, RegisteredChecksum] | None = None,
+    ) -> LoadedAppSession:
         safe_paths = SafeSessionPath(session_root)
         app_manifest_path = safe_paths.resolve("app/manifest.json", asset="app/manifest.json")
         if app_manifest_path.exists():
@@ -96,6 +131,17 @@ class AppSessionLoader:
         unknown = set(supplied) - set(paths)
         if unknown:
             raise M1AppError("manifest_invalid", "Supplied checksum role is not a raw source asset.", asset=sorted(item.value for item in unknown)[0])
+        invalid_sources = {
+            role
+            for role, checksum in supplied.items()
+            if checksum.provenance.source is not ChecksumSource.RECORDER
+        }
+        if invalid_sources:
+            raise M1AppError(
+                "manifest_invalid",
+                "P3A accepts only recorder-origin supplied checksums.",
+                asset=sorted(item.value for item in invalid_sources)[0],
+            )
         captured_at = self._clock()
         snapshot = ChecksumProvenance(ChecksumSource.APP_REGISTRATION, captured_at)
         assets = tuple(
@@ -207,6 +253,13 @@ class AppSessionLoader:
         by_role = {item.role: item for item in assets}
         samples_ref = by_role[AppAssetRole.RAW_SAMPLES]
         events_ref = by_role[AppAssetRole.RAW_EVENTS]
+        samples_path = SafeSessionPath(session_root).resolve(
+            samples_ref.relative_path,
+            asset=samples_ref.role.value,
+            require_exists=True,
+            require_file=True,
+        )
+        self._validate_jsonl_objects(samples_path, samples_ref.role)
         try:
             # This reuses P1's strict M1Sample/schema/session-ID parser. It does
             # not run SP or replay analysis; allow_incomplete only permits the
@@ -214,6 +267,8 @@ class AppSessionLoader:
             list(ReplayDataSource(session_root, allow_incomplete=True).samples())
         except ArtifactError as exc:
             raise M1AppError("raw_asset_corrupted", "Raw sample stream is invalid.", asset=samples_ref.role.value) from exc
+        except (OSError, UnicodeError) as exc:
+            raise M1AppError("asset_unreadable", "Raw sample stream cannot be read.", asset=samples_ref.role.value) from exc
 
         events_path = SafeSessionPath(session_root).resolve(
             events_ref.relative_path,
@@ -221,25 +276,29 @@ class AppSessionLoader:
             require_exists=True,
             require_file=True,
         )
+        self._validate_jsonl_objects(events_path, events_ref.role)
+
+    @staticmethod
+    def _validate_jsonl_objects(path: Path, role: AppAssetRole) -> None:
         try:
-            with events_path.open("r", encoding="utf-8") as handle:
+            with path.open("r", encoding="utf-8") as handle:
                 for line_no, line in enumerate(handle, start=1):
                     if not line.strip():
                         continue
-                    payload = loads_strict_json(line, asset=events_ref.role.value)
+                    payload = loads_strict_json(line, asset=role.value)
                     if not isinstance(payload, dict):
                         raise M1AppError(
                             "raw_asset_corrupted",
-                            "Event stream row must be a JSON object.",
-                            asset=events_ref.role.value,
+                            "Raw stream row must be a JSON object.",
+                            asset=role.value,
                             details={"line": line_no},
                         )
         except M1AppError as exc:
             if exc.code == "manifest_invalid":
-                raise M1AppError("raw_asset_corrupted", "Raw event stream is invalid.", asset=events_ref.role.value) from exc
+                raise M1AppError("raw_asset_corrupted", "Raw stream JSON is invalid.", asset=role.value) from exc
             raise
         except (OSError, UnicodeError) as exc:
-            raise M1AppError("raw_asset_corrupted", "Raw event stream cannot be read.", asset=events_ref.role.value) from exc
+            raise M1AppError("asset_unreadable", "Raw stream cannot be read.", asset=role.value) from exc
 
     @staticmethod
     def _discover_orphans(session_root: Path, manifest: AppManifest) -> tuple[str, ...]:
@@ -248,7 +307,7 @@ class AppSessionLoader:
         registered = {item.relative_path for item in manifest.runs}
         found: list[str] = []
         for parent_relative in ("app/.tmp", "app/runs"):
-            parent = session_root.joinpath(*parent_relative.split("/"))
+            parent = SafeSessionPath(session_root).resolve(parent_relative, asset=parent_relative)
             if not parent.is_dir():
                 continue
             try:
@@ -259,6 +318,6 @@ class AppSessionLoader:
                 logical = f"{parent_relative}/{child.name}"
                 if parent_relative == "app/runs" and logical in registered:
                     continue
-                if child.is_dir() or child.is_symlink():
+                if _is_link_or_junction(child) or child.is_dir():
                     found.append(logical)
         return tuple(found)

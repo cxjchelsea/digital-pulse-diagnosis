@@ -108,7 +108,7 @@ class ChecksumProvenance:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ChecksumProvenance":
         _strict_fields(payload, {"source", "captured_at_utc"}, set(), asset="checksum_provenance")
         try:
-            value = cls(ChecksumSource(payload["source"]), str(payload["captured_at_utc"]))
+            value = cls(ChecksumSource(payload["source"]), payload["captured_at_utc"])
         except (TypeError, ValueError) as exc:
             raise M1AppError("manifest_invalid", "Checksum provenance is invalid.", asset="checksum_provenance") from exc
         value.validate()
@@ -161,12 +161,12 @@ class AppAssetRef:
                 raise TypeError
             value = cls(
                 role=AppAssetRole(payload["role"]),
-                relative_path=str(payload["relative_path"]),
-                sha256=str(payload["sha256"]),
+                relative_path=payload["relative_path"],
+                sha256=payload["sha256"],
                 size_bytes=payload["size_bytes"],
-                media_type=str(payload["media_type"]),
-                producer=str(payload["producer"]),
-                version=str(payload["version"]),
+                media_type=payload["media_type"],
+                producer=payload["producer"],
+                version=payload["version"],
                 checksum_provenance=ChecksumProvenance.from_dict(provenance_raw),
             )
         except (TypeError, ValueError) as exc:
@@ -192,7 +192,10 @@ class AppProvenance:
         _require_nonempty("producer", self.producer)
         if not isinstance(self.execution_mode, AppExecutionMode):
             raise M1AppError("manifest_invalid", "Execution mode is invalid.", asset="execution_mode")
-        if self.configuration_digest is not None and not _HEX_64.fullmatch(self.configuration_digest):
+        if self.configuration_digest is not None and (
+            not isinstance(self.configuration_digest, str)
+            or not _HEX_64.fullmatch(self.configuration_digest)
+        ):
             raise M1AppError("manifest_invalid", "Configuration digest is invalid.", asset="configuration_digest")
 
     def to_dict(self) -> dict[str, Any]:
@@ -211,12 +214,12 @@ class AppProvenance:
         _strict_fields(payload, required, set(), asset="provenance")
         try:
             value = cls(
-                software_commit_sha=str(payload["software_commit_sha"]),
-                app_processing_version=str(payload["app_processing_version"]),
-                app_manifest_schema_version=str(payload["app_manifest_schema_version"]),
-                producer=str(payload["producer"]),
+                software_commit_sha=payload["software_commit_sha"],
+                app_processing_version=payload["app_processing_version"],
+                app_manifest_schema_version=payload["app_manifest_schema_version"],
+                producer=payload["producer"],
                 execution_mode=AppExecutionMode(payload["execution_mode"]),
-                configuration_digest=None if payload["configuration_digest"] is None else str(payload["configuration_digest"]),
+                configuration_digest=payload["configuration_digest"],
             )
         except (TypeError, ValueError) as exc:
             raise M1AppError("manifest_invalid", "APP provenance is invalid.", asset="provenance") from exc
@@ -281,10 +284,10 @@ class AppRunManifest:
             if not isinstance(provenance_raw, Mapping) or not isinstance(assets_raw, list):
                 raise TypeError
             value = cls(
-                run_id=str(payload["run_id"]),
+                run_id=payload["run_id"],
                 state=AppPersistenceState(payload["state"]),
-                relative_path=str(payload["relative_path"]),
-                committed_at_utc=str(payload["committed_at_utc"]),
+                relative_path=payload["relative_path"],
+                committed_at_utc=payload["committed_at_utc"],
                 provenance=AppProvenance.from_dict(provenance_raw),
                 assets=tuple(AppAssetRef.from_dict(item) for item in assets_raw if isinstance(item, Mapping)),
             )
@@ -310,7 +313,8 @@ class AppManifest:
     def validate(self) -> None:
         if self.schema_version != APP_MANIFEST_SCHEMA_VERSION:
             raise M1AppError("manifest_invalid", "Unsupported APP manifest schema version.", asset="app/manifest.json")
-        _require_nonempty("app_processing_version", self.app_processing_version)
+        if self.app_processing_version != APP_PROCESSING_VERSION_P3A:
+            raise M1AppError("manifest_invalid", "Unsupported APP processing version.", asset="app_processing_version")
         _require_identifier("session_id", self.session_id)
         _require_iso8601("registered_at_utc", self.registered_at_utc)
         if not isinstance(self.raw_integrity_assurance, RawIntegrityAssurance):
@@ -358,14 +362,14 @@ class AppManifest:
             if not isinstance(source_raw, list) or not isinstance(runs_raw, list):
                 raise TypeError
             value = cls(
-                schema_version=str(payload["schema_version"]),
-                app_processing_version=str(payload["app_processing_version"]),
-                session_id=str(payload["session_id"]),
-                registered_at_utc=str(payload["registered_at_utc"]),
+                schema_version=payload["schema_version"],
+                app_processing_version=payload["app_processing_version"],
+                session_id=payload["session_id"],
+                registered_at_utc=payload["registered_at_utc"],
                 raw_integrity_assurance=RawIntegrityAssurance(payload["raw_integrity_assurance"]),
                 source_assets=tuple(AppAssetRef.from_dict(item) for item in source_raw if isinstance(item, Mapping)),
                 runs=tuple(AppRunManifest.from_dict(item) for item in runs_raw if isinstance(item, Mapping)),
-                current_run_id=None if payload["current_run_id"] is None else str(payload["current_run_id"]),
+                current_run_id=payload["current_run_id"],
             )
             if len(value.source_assets) != len(source_raw) or len(value.runs) != len(runs_raw):
                 raise TypeError
@@ -385,4 +389,6 @@ class AppSessionRef:
     def validate(self) -> None:
         _require_identifier("session_id", self.session_id)
         _require_nonempty("source_type", self.source_type)
+        if not isinstance(self.completed, bool):
+            raise M1AppError("manifest_invalid", "Session completion state must be boolean.", asset="completed")
         _require_nonempty("raw_persistence_status", self.raw_persistence_status)

@@ -70,6 +70,34 @@ def test_invalid_sha_and_unknown_fields_fail_closed():
     assert caught2.value.code == "manifest_invalid"
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("app_processing_version", 1),
+        ("session_id", 123),
+        ("registered_at_utc", 123),
+    ],
+)
+def test_manifest_from_dict_never_coerces_non_string_fields(field, value):
+    payload = valid_manifest().to_dict()
+    payload[field] = value
+    with pytest.raises(M1AppError) as caught:
+        AppManifest.from_dict(payload)
+    assert caught.value.code == "manifest_invalid"
+
+
+def test_asset_and_provenance_from_dict_never_coerce_types():
+    asset_payload = asset(AppAssetRole.RAW_SAMPLES, "samples.jsonl").to_dict()
+    asset_payload["relative_path"] = 123
+    with pytest.raises(M1AppError):
+        AppAssetRef.from_dict(asset_payload)
+
+    provenance_payload = provenance().to_dict()
+    provenance_payload["producer"] = 123
+    with pytest.raises(M1AppError):
+        type(provenance()).from_dict(provenance_payload)
+
+
 def test_duplicate_source_role_and_unknown_schema_are_rejected():
     manifest = valid_manifest()
     duplicate = replace(
@@ -127,3 +155,9 @@ def test_canonical_json_rejects_non_finite_values():
     with pytest.raises(M1AppError) as caught:
         canonical_json_bytes({"value": float("nan")})
     assert caught.value.code == "manifest_invalid"
+
+
+def test_canonical_json_has_stable_utf8_lf_and_compact_sorted_keys():
+    assert canonical_json_bytes({"é": 1, "a": [2, {"z": 3}]}) == (
+        b'{"a":[2,{"z":3}],"\xc3\xa9":1}\n'
+    )

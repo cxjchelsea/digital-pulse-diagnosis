@@ -14,6 +14,25 @@ from digital_pulse.m1_simulator.paths import (
 from .errors import M1AppError
 
 
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{value}" for value in range(1, 10)),
+    *(f"LPT{value}" for value in range(1, 10)),
+}
+_WINDOWS_FORBIDDEN_CHARS = frozenset('<>:"|?*')
+
+
+def _is_portable_segment(part: str) -> bool:
+    if part.endswith((" ", ".")):
+        return False
+    if any(ord(char) < 32 or char in _WINDOWS_FORBIDDEN_CHARS for char in part):
+        return False
+    return part.split(".", 1)[0].upper() not in _WINDOWS_RESERVED_NAMES
+
+
 def validate_logical_relative_path(value: str, *, asset: str = "asset") -> str:
     """Return a canonical POSIX relative path or fail before filesystem access."""
 
@@ -26,6 +45,8 @@ def validate_logical_relative_path(value: str, *, asset: str = "asset") -> str:
     logical = PurePosixPath(value)
     if logical in {PurePosixPath("."), PurePosixPath("")} or any(part in {"", ".", ".."} for part in logical.parts):
         raise M1AppError("path_escape", "Asset path contains an unsafe segment.", asset=asset)
+    if any(not _is_portable_segment(part) for part in logical.parts):
+        raise M1AppError("path_escape", "Asset path contains a non-portable segment.", asset=asset)
     canonical = logical.as_posix()
     if canonical != value:
         raise M1AppError("path_escape", "Asset path is not canonical POSIX form.", asset=asset)

@@ -55,3 +55,20 @@ def test_p3a_package_has_no_simulator_oracle_dependency():
         "expected.json",
     )
     assert all(item not in text for item in forbidden)
+
+
+def test_orphan_discovery_rejects_symlinked_runs_parent(tmp_path: Path):
+    _, recorded = record_session(tmp_path)
+    app_loader = AppSessionLoader(tmp_path, clock=lambda: FIXED_TIME)
+    app_loader.register(recorded.session_id)
+    outside = tmp_path / "outside-runs"
+    outside.mkdir()
+    (outside / "leaked-name").mkdir()
+    runs = recorded.session_path / "app" / "runs"
+    try:
+        runs.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation is unavailable on this platform")
+    with pytest.raises(M1AppError) as caught:
+        app_loader.load(recorded.session_id)
+    assert caught.value.code == "symlink_escape"

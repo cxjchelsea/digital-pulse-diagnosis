@@ -767,3 +767,26 @@ M1-P3A — APP contracts / persistence foundation
 - loader 对 raw 与已登记 APP 资产 fail closed，且不读取 simulator scenario/expected oracle，不调用 SP/Quality Gate/Report。
 
 P3A 定向测试、全量 pytest/unittest、D3/P1/P2 回归和 Web production build 的最终实测结果记录在配套测试计划。Issue #29 的 P3 总复选框仍须保持未勾选；P3B-P3F 均未开始。
+
+## 33. P3A Final Review修复与边界
+
+独立攻击式Final Review识别并修复了仅属于P3A persistence foundation的阻断缺陷：
+
+- registration与run commit现在复用同一session级OS文件锁；两个进程首次注册只产生一个snapshot，registration/commit并发不再丢run；
+- 跨进程不同run不会last-writer-wins，同run只允许一个成功，另一个稳定返回`artifact_conflict`；
+- model `from_dict()`不再把数字等错误类型静默转换为字符串，APP schema/processing version继续fail closed；
+- Windows reserved device name、非法字符及尾随dot/space被拒绝，logical path仍统一为POSIX `/`；
+- 普通registration只接受`recorder` supplied checksum，不能自行声称`hardware_seal`；P3A run只能记录`persistence_only`，不能虚构Direct/Replay/Hardware执行；
+- raw samples/events在进入P1 parser前增加duplicate-key/NaN/Infinity严格JSONL扫描，权限与checksum I/O错误统一映射为不泄漏路径的`M1AppError`；
+- orphan扫描拒绝被symlink/junction替换的`app/.tmp`或`app/runs`，且正式loader仍只采信manifest登记run；
+- asset fsync失败不再被吞掉，atomic failure matrix覆盖temp、write、checksum、rename和manifest update关键转换。
+
+完整性边界必须准确表述：APP manifest中的SHA-256是registered-state一致性anchor，不是数字签名。能够同时重写APP manifest与全部资产的恶意主体不在当前单用户本地session storage threat model内；未来需要跨信任域交换时应增加外部签名/可信seal。
+
+已知非阻断限制：
+
+- Windows junction由`os.path.isjunction`和实现审查覆盖；本轮自动化环境未稳定执行junction创建，Linux/Windows symlink及Windows跨进程锁已实际测试；
+- containment check与最终open之间仍有极窄TOCTOU窗口；当前单用户、本地session目录模型下接受，未来多租户或不可信可写目录应使用handle-relative/no-follow I/O；
+- `%2e%2e`在P3A filesystem loader中只是普通文件名；未来HTTP API必须先URL decode再调用P3A path validator。
+
+本轮仍未实现P3B能力，没有修改root acquisition manifest、P0/P1/P2冻结实现或golden。

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO, Callable, Iterable, Iterator
+from typing import Callable, Iterable
 import uuid
 
 from digital_pulse.m1_contracts import utc_now_iso
@@ -16,11 +15,13 @@ from digital_pulse.m1_simulator.paths import validate_artifact_identifier
 from .checksums import compute_registered_checksum
 from .errors import M1AppError
 from .loader import AppSessionLoader
-from .manifest import canonical_json_bytes, write_app_manifest_atomic
+from .locking import app_session_lock
+from .manifest import canonical_json_bytes, loads_strict_json, write_app_manifest_atomic
 from .models import (
     APP_PROCESSING_VERSION_P3A,
     AppAssetRef,
     AppAssetRole,
+    AppExecutionMode,
     AppPersistenceState,
     AppProvenance,
     AppRunManifest,
@@ -57,6 +58,15 @@ class AppAssetWrite:
         for name, value in (("media_type", self.media_type), ("producer", self.producer), ("version", self.version)):
             if not isinstance(value, str) or not value:
                 raise M1AppError("manifest_invalid", f"{name} must be non-empty.", asset=self.role.value)
+        if self.media_type == "application/json":
+            try:
+                loads_strict_json(self.content.decode("utf-8"), asset=self.role.value)
+            except (M1AppError, UnicodeError) as exc:
+                raise M1AppError(
+                    "manifest_invalid",
+                    "JSON asset content must be strict UTF-8 JSON.",
+                    asset=self.role.value,
+                ) from exc
 
 
 class AppPersistence:
@@ -85,7 +95,8 @@ class AppPersistence:
         # The manifest update is atomic as a file operation, but it also needs
         # serialization around read-modify-write so concurrent writers cannot
         # silently lose a successfully published run.
-        with self._commit_lock(session_id):
+        session_root = resolve_session_root(self._sessions_root, session_id)
+        with app_session_lock(session_root):
             return self._commit_run_locked(
                 session_id,
                 run_id,
@@ -102,6 +113,12 @@ class AppPersistence:
         assets: Iterable[AppAssetWrite],
     ) -> AppRunManifest:
         provenance.validate()
+        if provenance.execution_mode is not AppExecutionMode.PERSISTENCE_ONLY:
+            raise M1AppError(
+                "manifest_invalid",
+                "P3A persistence cannot claim an execution mode from a later stage.",
+                asset="execution_mode",
+            )
         try:
             validate_artifact_identifier(run_id, name="run_id")
         except ArtifactError as exc:
@@ -113,6 +130,12 @@ class AppPersistence:
                 "manifest_invalid",
                 "Run provenance schema version does not match the APP manifest.",
                 asset="app_manifest_schema_version",
+            )
+        if provenance.app_processing_version != manifest.app_processing_version:
+            raise M1AppError(
+                "manifest_invalid",
+                "Run provenance processing version does not match the APP manifest.",
+                asset="app_processing_version",
             )
         if any(item.run_id == run_id for item in manifest.runs):
             raise M1AppError("artifact_conflict", "Run ID is already registered and immutable.", asset=run_id)
@@ -134,12 +157,15 @@ class AppPersistence:
         checksum_provenance = ChecksumProvenance(ChecksumSource.APP_PERSISTENCE, committed_at)
 
         try:
+            self._inject("before_temp_creation")
             temp_dir.mkdir(parents=True, exist_ok=False)
+            self._inject("after_temp_creation")
             refs: list[AppAssetRef] = []
             for item in writes:
                 self._inject(f"write_asset:{item.role.value}")
                 temp_asset = temp_dir.joinpath(*PurePosixPath(item.relative_path).parts)
                 self._write_bytes(temp_asset, item.content)
+                self._inject(f"after_asset_write:{item.role.value}")
                 logical = f"{final_relative}/{item.relative_path}"
                 refs.append(
                     self._ref_for_temp_file(
@@ -186,6 +212,7 @@ class AppPersistence:
                     provenance=checksum_provenance,
                 )
             )
+            self._inject("after_checksum")
 
             run = AppRunManifest(
                 run_id=run_id,
@@ -198,6 +225,7 @@ class AppPersistence:
             run.validate()
             self._verify_temp_refs(temp_dir, final_relative, run.assets)
 
+            self._inject("before_rename")
             self._inject("rename_run")
             if final_dir.exists():
                 raise M1AppError("artifact_conflict", "Run directory appeared during commit.", asset=run_id)
@@ -212,62 +240,15 @@ class AppPersistence:
                 current_run_id=run_id,
             )
             updated.validate()
+            self._inject("before_manifest_update")
             self._inject("manifest_update")
             write_app_manifest_atomic(safe_paths.resolve("app/manifest.json", asset="app/manifest.json"), updated)
+            self._inject("after_manifest_update")
             return run
         except M1AppError:
             raise
         except OSError as exc:
             raise M1AppError("persistence_failed", "APP run persistence failed.", asset=run_id) from exc
-
-    @contextmanager
-    def _commit_lock(self, session_id: str) -> Iterator[None]:
-        session_root = resolve_session_root(self._sessions_root, session_id)
-        lock_path = SafeSessionPath(session_root).resolve("app/.commit.lock", asset="commit_lock")
-        try:
-            lock_path.parent.mkdir(parents=True, exist_ok=True)
-            with lock_path.open("a+b") as handle:
-                self._lock_handle(handle)
-                try:
-                    yield
-                finally:
-                    self._unlock_handle(handle)
-        except M1AppError:
-            raise
-        except OSError as exc:
-            raise M1AppError(
-                "persistence_failed",
-                "APP persistence lock could not be acquired.",
-                asset="commit_lock",
-            ) from exc
-
-    @staticmethod
-    def _lock_handle(handle: BinaryIO) -> None:
-        handle.seek(0, os.SEEK_END)
-        if handle.tell() == 0:
-            handle.write(b"\0")
-            handle.flush()
-        handle.seek(0)
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-
-    @staticmethod
-    def _unlock_handle(handle: BinaryIO) -> None:
-        handle.seek(0)
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def _inject(self, point: str) -> None:
         if self._failure_injector is not None:
@@ -296,10 +277,7 @@ class AppPersistence:
         with path.open("xb") as handle:
             handle.write(content)
             handle.flush()
-            try:
-                os.fsync(handle.fileno())
-            except OSError:
-                pass
+            os.fsync(handle.fileno())
 
     @staticmethod
     def _ref_for_temp_file(
@@ -312,7 +290,7 @@ class AppPersistence:
         version: str,
         provenance: ChecksumProvenance,
     ) -> AppAssetRef:
-        checksum = compute_registered_checksum(path, provenance)
+        checksum = compute_registered_checksum(path, provenance, asset=role.value)
         ref = AppAssetRef(
             role=role,
             relative_path=logical_relative_path,
@@ -334,7 +312,7 @@ class AppPersistence:
                 raise M1AppError("manifest_invalid", "Run asset is outside its run directory.", asset=ref.role.value)
             within = ref.relative_path[len(prefix):]
             path = temp_dir.joinpath(*PurePosixPath(within).parts)
-            checksum = compute_registered_checksum(path, ref.checksum_provenance)
+            checksum = compute_registered_checksum(path, ref.checksum_provenance, asset=ref.role.value)
             if checksum.sha256 != ref.sha256 or checksum.size_bytes != ref.size_bytes:
                 raise M1AppError("raw_asset_corrupted", "Run asset changed before commit.", asset=ref.role.value)
 

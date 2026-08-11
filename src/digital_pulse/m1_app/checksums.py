@@ -30,20 +30,32 @@ class RegisteredChecksum:
         self.provenance.validate()
 
 
-def compute_registered_checksum(path: Path, provenance: ChecksumProvenance) -> RegisteredChecksum:
+def compute_registered_checksum(
+    path: Path,
+    provenance: ChecksumProvenance,
+    *,
+    asset: str = "checksum",
+) -> RegisteredChecksum:
     provenance.validate()
-    return RegisteredChecksum(
-        sha256=sha256_file(path),
-        size_bytes=path.stat().st_size,
-        provenance=provenance,
-    )
+    try:
+        return RegisteredChecksum(
+            sha256=sha256_file(path),
+            size_bytes=path.stat().st_size,
+            provenance=provenance,
+        )
+    except OSError as exc:
+        raise M1AppError("asset_unreadable", "Asset cannot be read for checksum registration.", asset=asset) from exc
 
 
 def verify_registered_checksum(path: Path, expected: RegisteredChecksum, *, asset: str) -> None:
     expected.validate()
-    if not path.is_file():
+    try:
+        is_file = path.is_file()
+        actual_size = path.stat().st_size if is_file else None
+    except OSError as exc:
+        raise M1AppError("asset_unreadable", "Registered asset cannot be read.", asset=asset) from exc
+    if not is_file or actual_size is None:
         raise M1AppError("raw_asset_missing", "Required asset is missing.", asset=asset)
-    actual_size = path.stat().st_size
     if actual_size != expected.size_bytes:
         raise M1AppError(
             "raw_asset_corrupted",
@@ -51,8 +63,13 @@ def verify_registered_checksum(path: Path, expected: RegisteredChecksum, *, asse
             asset=asset,
             details={"expected_size": expected.size_bytes, "actual_size": actual_size},
         )
-    if sha256_file(path) != expected.sha256:
-        raise M1AppError("raw_asset_corrupted", "Asset SHA-256 does not match its registered checksum.", asset=asset)
+    try:
+        if sha256_file(path) != expected.sha256:
+            raise M1AppError("raw_asset_corrupted", "Asset SHA-256 does not match its registered checksum.", asset=asset)
+    except M1AppError:
+        raise
+    except OSError as exc:
+        raise M1AppError("asset_unreadable", "Registered asset cannot be read.", asset=asset) from exc
 
 
 def build_asset_ref(
@@ -73,7 +90,7 @@ def build_asset_ref(
     else:
         if snapshot_provenance is None:
             raise M1AppError("manifest_invalid", "Checksum provenance is required.", asset=role.value)
-        checksum = compute_registered_checksum(path, snapshot_provenance)
+        checksum = compute_registered_checksum(path, snapshot_provenance, asset=role.value)
     ref = AppAssetRef(
         role=role,
         relative_path=relative_path,
