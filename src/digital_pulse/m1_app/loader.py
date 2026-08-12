@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 from digital_pulse.m1_contracts import (
     FileRole,
@@ -170,7 +170,7 @@ class AppSessionLoader:
         write_app_manifest_atomic(app_manifest_path, manifest)
         return self.load(session_id)
 
-    def load(self, session_id: str) -> LoadedAppSession:
+    def load(self, session_id: str, *, verify_runs: bool = True) -> LoadedAppSession:
         session_root = resolve_session_root(self._sessions_root, session_id)
         safe_paths = SafeSessionPath(session_root)
         session = self._load_root_session(session_root, session_id)
@@ -192,24 +192,29 @@ class AppSessionLoader:
             )
         verified = {item.role: verify_asset_ref(safe_paths, item) for item in manifest.source_assets}
         self._validate_source_content(session_root, session, manifest.source_assets)
-        for run in manifest.runs:
-            for asset in run.assets:
-                path = verify_asset_ref(safe_paths, asset)
-                if asset.media_type == "application/json":
-                    try:
-                        loads_strict_json(path.read_text(encoding="utf-8"), asset=asset.role.value)
-                    except M1AppError as exc:
-                        raise M1AppError(
-                            "raw_asset_corrupted",
-                            "Registered APP JSON asset is invalid.",
-                            asset=asset.role.value,
-                        ) from exc
-                    except (OSError, UnicodeError) as exc:
-                        raise M1AppError(
-                            "raw_asset_corrupted",
-                            "Registered APP JSON asset cannot be read.",
-                            asset=asset.role.value,
-                        ) from exc
+        if verify_runs:
+            for run in manifest.runs:
+                run_json_payloads: dict[AppAssetRole, dict[str, Any]] = {}
+                for asset in run.assets:
+                    path = verify_asset_ref(safe_paths, asset)
+                    if asset.media_type == "application/json":
+                        try:
+                            payload = loads_strict_json(path.read_text(encoding="utf-8"), asset=asset.role.value)
+                            if isinstance(payload, dict):
+                                run_json_payloads[asset.role] = payload
+                        except M1AppError as exc:
+                            raise M1AppError(
+                                "raw_asset_corrupted",
+                                "Registered APP JSON asset is invalid.",
+                                asset=asset.role.value,
+                            ) from exc
+                        except (OSError, UnicodeError) as exc:
+                            raise M1AppError(
+                                "raw_asset_corrupted",
+                                "Registered APP JSON asset cannot be read.",
+                                asset=asset.role.value,
+                            ) from exc
+                self._validate_run_semantic_links(run_json_payloads)
         ref = AppSessionRef(
             session_id=session.session_id,
             source_type=session.source_type.value,
@@ -321,3 +326,27 @@ class AppSessionLoader:
                 if _is_link_or_junction(child) or child.is_dir():
                     found.append(logical)
         return tuple(found)
+
+    @staticmethod
+    def _validate_run_semantic_links(payloads: Mapping[AppAssetRole, Mapping[str, Any]]) -> None:
+        """Fail closed when P3B analysis and SP artifacts do not name the same SP result."""
+
+        analysis = payloads.get(AppAssetRole.ANALYSIS)
+        sp_result = payloads.get(AppAssetRole.SP_RESULT)
+        if analysis is None or sp_result is None:
+            return
+        analysis_provenance = analysis.get("provenance")
+        if not isinstance(analysis_provenance, Mapping):
+            raise M1AppError(
+                "raw_asset_corrupted",
+                "Registered APP analysis provenance is invalid.",
+                asset=AppAssetRole.ANALYSIS.value,
+            )
+        analysis_sp_sha = analysis_provenance.get("sp_result_sha256")
+        result_sp_sha = sp_result.get("result_sha256")
+        if not isinstance(analysis_sp_sha, str) or not isinstance(result_sp_sha, str) or analysis_sp_sha != result_sp_sha:
+            raise M1AppError(
+                "raw_asset_corrupted",
+                "Registered APP analysis does not match the SP result artifact.",
+                asset=AppAssetRole.ANALYSIS.value,
+            )
