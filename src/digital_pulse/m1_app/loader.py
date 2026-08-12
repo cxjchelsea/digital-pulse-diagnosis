@@ -170,7 +170,7 @@ class AppSessionLoader:
         write_app_manifest_atomic(app_manifest_path, manifest)
         return self.load(session_id)
 
-    def load(self, session_id: str) -> LoadedAppSession:
+    def load(self, session_id: str, *, verify_runs: bool = True) -> LoadedAppSession:
         session_root = resolve_session_root(self._sessions_root, session_id)
         safe_paths = SafeSessionPath(session_root)
         session = self._load_root_session(session_root, session_id)
@@ -192,24 +192,25 @@ class AppSessionLoader:
             )
         verified = {item.role: verify_asset_ref(safe_paths, item) for item in manifest.source_assets}
         self._validate_source_content(session_root, session, manifest.source_assets)
-        for run in manifest.runs:
-            for asset in run.assets:
-                path = verify_asset_ref(safe_paths, asset)
-                if asset.media_type == "application/json":
-                    try:
-                        loads_strict_json(path.read_text(encoding="utf-8"), asset=asset.role.value)
-                    except M1AppError as exc:
-                        raise M1AppError(
-                            "raw_asset_corrupted",
-                            "Registered APP JSON asset is invalid.",
-                            asset=asset.role.value,
-                        ) from exc
-                    except (OSError, UnicodeError) as exc:
-                        raise M1AppError(
-                            "raw_asset_corrupted",
-                            "Registered APP JSON asset cannot be read.",
-                            asset=asset.role.value,
-                        ) from exc
+        if verify_runs:
+            for run in manifest.runs:
+                for asset in run.assets:
+                    path = verify_asset_ref(safe_paths, asset)
+                    if asset.media_type == "application/json":
+                        try:
+                            loads_strict_json(path.read_text(encoding="utf-8"), asset=asset.role.value)
+                        except M1AppError as exc:
+                            raise M1AppError(
+                                "raw_asset_corrupted",
+                                "Registered APP JSON asset is invalid.",
+                                asset=asset.role.value,
+                            ) from exc
+                        except (OSError, UnicodeError) as exc:
+                            raise M1AppError(
+                                "raw_asset_corrupted",
+                                "Registered APP JSON asset cannot be read.",
+                                asset=asset.role.value,
+                            ) from exc
         ref = AppSessionRef(
             session_id=session.session_id,
             source_type=session.source_type.value,

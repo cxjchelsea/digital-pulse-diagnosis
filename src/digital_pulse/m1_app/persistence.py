@@ -27,6 +27,7 @@ from .models import (
     AppRunManifest,
     ChecksumProvenance,
     ChecksumSource,
+    SUPPORTED_APP_PROCESSING_VERSIONS,
 )
 from .paths import SafeSessionPath, resolve_session_root, validate_logical_relative_path
 
@@ -91,6 +92,7 @@ class AppPersistence:
         *,
         provenance: AppProvenance,
         assets: Iterable[AppAssetWrite],
+        allowed_execution_modes: frozenset[AppExecutionMode] | None = None,
     ) -> AppRunManifest:
         # The manifest update is atomic as a file operation, but it also needs
         # serialization around read-modify-write so concurrent writers cannot
@@ -102,6 +104,7 @@ class AppPersistence:
                 run_id,
                 provenance=provenance,
                 assets=assets,
+                allowed_execution_modes=allowed_execution_modes,
             )
 
     def _commit_run_locked(
@@ -111,12 +114,14 @@ class AppPersistence:
         *,
         provenance: AppProvenance,
         assets: Iterable[AppAssetWrite],
+        allowed_execution_modes: frozenset[AppExecutionMode] | None = None,
     ) -> AppRunManifest:
         provenance.validate()
-        if provenance.execution_mode is not AppExecutionMode.PERSISTENCE_ONLY:
+        modes = allowed_execution_modes or frozenset({AppExecutionMode.PERSISTENCE_ONLY})
+        if provenance.execution_mode not in modes:
             raise M1AppError(
                 "manifest_invalid",
-                "P3A persistence cannot claim an execution mode from a later stage.",
+                "APP persistence cannot claim an execution mode outside the caller scope.",
                 asset="execution_mode",
             )
         try:
@@ -131,10 +136,10 @@ class AppPersistence:
                 "Run provenance schema version does not match the APP manifest.",
                 asset="app_manifest_schema_version",
             )
-        if provenance.app_processing_version != manifest.app_processing_version:
+        if provenance.app_processing_version not in SUPPORTED_APP_PROCESSING_VERSIONS:
             raise M1AppError(
                 "manifest_invalid",
-                "Run provenance processing version does not match the APP manifest.",
+                "Run provenance processing version is not supported by this APP manifest schema.",
                 asset="app_processing_version",
             )
         if any(item.run_id == run_id for item in manifest.runs):

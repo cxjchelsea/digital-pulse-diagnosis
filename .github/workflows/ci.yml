@@ -135,6 +135,35 @@ jobs:
           name: m1-p2-acceptance
           path: artifacts/acceptance/m1-p2-acceptance.json
 
+      - name: Run M1-P3B formal acceptance
+        run: python scripts/generate_m1_p3b_acceptance.py
+
+      - name: Assert M1-P3B formal acceptance
+        run: >
+          python -c "import json, subprocess; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p3b-acceptance.json').read_text(encoding='utf-8'));
+          expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('software_commit_sha') == expected_sha;
+          assert d.get('single_attempt_cases') == 16;
+          assert d.get('multi_attempt_cases') == 2;
+          assert d.get('attempt_count') == 21;
+          assert d.get('direct_replay_sp_equivalent') is True;
+          assert d.get('direct_replay_app_equivalent') is True;
+          assert d.get('determinism_verified') is True;
+          assert d.get('oracle_isolation_verified') is True;
+          assert d.get('read_only_replay_unchanged') is True;
+          assert d.get('persisted_replay_integrity') is True;
+          assert d.get('raw_tamper_fail_closed') is True;
+          assert d.get('sp_semantic_fingerprint_version') == 'sp-result-fingerprint:v2'"
+
+      - name: Upload M1-P3B acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-p3b-acceptance
+          path: artifacts/acceptance/m1-p3b-acceptance.json
+
   web:
     name: Web production build
     runs-on: ubuntu-latest

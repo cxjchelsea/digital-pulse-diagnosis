@@ -13,7 +13,11 @@ from .paths import validate_logical_relative_path
 
 
 APP_PROCESSING_VERSION_P3A = "0.1.0-p3a"
+APP_PROCESSING_VERSION_P3B = "0.2.0-p3b"
 APP_MANIFEST_SCHEMA_VERSION = "m1-p3-app-manifest-v1"
+SUPPORTED_APP_PROCESSING_VERSIONS = frozenset(
+    {APP_PROCESSING_VERSION_P3A, APP_PROCESSING_VERSION_P3B}
+)
 
 _HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
@@ -313,7 +317,7 @@ class AppManifest:
     def validate(self) -> None:
         if self.schema_version != APP_MANIFEST_SCHEMA_VERSION:
             raise M1AppError("manifest_invalid", "Unsupported APP manifest schema version.", asset="app/manifest.json")
-        if self.app_processing_version != APP_PROCESSING_VERSION_P3A:
+        if self.app_processing_version not in SUPPORTED_APP_PROCESSING_VERSIONS:
             raise M1AppError("manifest_invalid", "Unsupported APP processing version.", asset="app_processing_version")
         _require_identifier("session_id", self.session_id)
         _require_iso8601("registered_at_utc", self.registered_at_utc)

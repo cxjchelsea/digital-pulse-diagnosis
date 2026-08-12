@@ -790,3 +790,49 @@ P3A 定向测试、全量 pytest/unittest、D3/P1/P2 回归和 Web production bu
 - `%2e%2e`在P3A filesystem loader中只是普通文件名；未来HTTP API必须先URL decode再调用P3A path validator。
 
 本轮仍未实现P3B能力，没有修改root acquisition manifest、P0/P1/P2冻结实现或golden。
+## 34. M1-P3B implementation record
+
+M1-P3B implements Replay + Analysis Projection + Quality Gate on top of the
+merged P3A persistence foundation. It does not complete M1-P3 overall.
+
+Implemented:
+
+- `ReplaySessionSource` and `ReplayAnalysisService` load registered persisted
+  raw session assets, then rerun the frozen `SPProcessor` from raw samples.
+- Read-only replay is the default: `persist=False` does not mutate
+  `app/manifest.json`, create run directories, or update current run pointers.
+- Explicit persisted replay uses `persist=True` plus a new `run_id`, then
+  commits immutable APP run assets through P3A `AppPersistence`.
+- `AnalysisProjector` creates deterministic APP semantic projection from
+  `SPProcessingResult`; it does not recompute quality, beats, windows,
+  integrity, reference matching, or P2 reason codes.
+- `AnalysisQualityGate` separates observable diagnostic analysis from formal
+  parameter availability. Formal parameters remain `null` while evidence is
+  synthetic-only and pending H1 calibration.
+- SP result persistence writes deterministic `sp/result.json` plus
+  `sp/series/*.npy` assets and preserves SP provenance:
+  `0.4.0-p2d`, `0.3.0-p2c`, `sp-result-fingerprint:v2`,
+  `result_sha256`, and parameter digest.
+- APP analysis persistence writes `analysis.json` with APP provenance,
+  gate decision, limitations, integrity, quality, window, beat, reference,
+  filter-view, engineering-unit, and SP provenance summaries.
+- Registered run tamper remains detected by the default loader; read-only
+  replay does not use stored SP or stored analysis as input.
+
+Not implemented in P3B:
+
+- REST API
+- React UI
+- formal `M1Report` builder
+- pre-acceptance report
+- INT/P4 decisions
+- retry orchestration or automatic reacquisition
+- real hardware, real H1 calibration, or medical claims
+
+Version boundary:
+
+- APP manifest schema remains `m1-p3-app-manifest-v1`.
+- P3A root manifests with `0.1.0-p3a` remain readable.
+- P3B run provenance uses APP processing version `0.2.0-p3b`.
+- P0/P1/P2 contracts, simulator, SP algorithms, parameters, fingerprint, and
+  golden fixtures are frozen upstream inputs and are not modified by P3B.
