@@ -8,13 +8,18 @@ import pytest
 
 from digital_pulse.m1_app import (
     APP_PROCESSING_VERSION_P3B,
+    AppAssetWrite,
     AppAssetRole,
     AppExecutionMode,
+    AppPersistence,
     AppSessionLoader,
     M1AppError,
     ReplayAnalysisService,
     compare_app_analysis,
 )
+from digital_pulse.m1_app.analysis import create_replay_app_provenance
+from digital_pulse.m1_app.manifest import canonical_json_bytes
+from digital_pulse.m1_app.sp_serialization import sp_result_assets
 from digital_pulse.m1_simulator import M1SessionRecorder, SimulatorDataSource, get_scenario
 from digital_pulse.m1_sp import SPProcessingProvenance, SPProcessor, compare_sp_results
 
@@ -158,6 +163,35 @@ def test_stored_analysis_tamper_does_not_feed_read_only_replay_but_is_detected_b
 
     replayed = _service(tmp_path).replay(recorded.session_id, software_commit_sha=FIXED_SHA)
     assert compare_app_analysis(original.analysis, replayed.analysis)
+    with pytest.raises(M1AppError) as caught:
+        AppSessionLoader(tmp_path).load(recorded.session_id)
+    assert caught.value.code == "raw_asset_corrupted"
+
+
+def test_loader_rejects_semantically_cross_linked_sp_and_analysis_assets(tmp_path: Path):
+    _, recorded, _ = _record_and_register(tmp_path, "normal_high_quality")
+    result = _service(tmp_path).replay(recorded.session_id, software_commit_sha=FIXED_SHA)
+    poisoned_analysis = result.analysis.to_dict()
+    poisoned_analysis["provenance"]["sp_result_sha256"] = "0" * 64
+
+    AppPersistence(tmp_path).commit_run(
+        recorded.session_id,
+        "run-cross-link",
+        provenance=create_replay_app_provenance(FIXED_SHA),
+        assets=(
+            *sp_result_assets(result.sp_result),
+            AppAssetWrite(
+                role=AppAssetRole.ANALYSIS,
+                relative_path="analysis.json",
+                content=canonical_json_bytes(poisoned_analysis),
+                media_type="application/json",
+                producer="test-cross-link-attack",
+                version=APP_PROCESSING_VERSION_P3B,
+            ),
+        ),
+        allowed_execution_modes=frozenset({AppExecutionMode.REPLAY}),
+    )
+
     with pytest.raises(M1AppError) as caught:
         AppSessionLoader(tmp_path).load(recorded.session_id)
     assert caught.value.code == "raw_asset_corrupted"
