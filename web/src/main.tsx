@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
+import {M1Workspace} from './m1/M1Workspace';
 
 type Step={target_force:number;sample_count:number;quality_label:string;quality_score:number;heart_rate_bpm:number|null;pulse_amplitude:number|null};
 type Result={manifest:{session_id:string;statistics:{frame_count:number;missing_frame_count:number;crc_error_count:number}};report:{analysis_allowed:boolean;best_target_force:number|null;steps:Step[];disclaimer:string}};
@@ -11,9 +12,20 @@ type D3Report={report_sha256:string;model_units:string;medical_use:boolean;analy
 type RuntimeEvent={tick:number;type:string;state?:string;command?:number;code?:string;action?:string};
 type RuntimeSnap={run_id:string;status:string;state:string;tick:number;target_force_au:number|null;actual_force_au:number;position_au:number;command:number;unload_complete:boolean;final_state:string|null;error:string|null;seed:number;targets_au:number[];timeline:{tick:number;state:string}[];events:RuntimeEvent[];report:Record<string,unknown>|null;disclaimer:string};
 
+type WorkspaceMode = 'm1' | 'legacy';
+
 const ABORTABLE=new Set(['APPROACH','CONTACT','STABILIZE','ACQUIRE','STEP']);
 
+function readInitialMode(): WorkspaceMode {
+  const hash = window.location.hash.replace(/^#/, '');
+  if (hash === 'legacy' || hash === 'd3') {
+    return 'legacy';
+  }
+  return 'm1';
+}
+
 function App(){
+ const [mode,setMode]=useState<WorkspaceMode>(readInitialMode);
  const [health,setHealth]=useState('检查中'); const [device,setDevice]=useState('握手中'); const [d3,setD3]=useState<D3Report|null>(null); const [d3Busy,setD3Busy]=useState(false); const [replayState,setReplayState]=useState('尚未重放'); const [result,setResult]=useState<Result|null>(null); const [d2,setD2]=useState<D2Report|null>(null); const [busy,setBusy]=useState(false); const [d2Busy,setD2Busy]=useState(false); const [error,setError]=useState(''); const [wave,setWave]=useState<number[]>([]); const [force,setForce]=useState<number[]>([]);
  const [runtime,setRuntime]=useState<RuntimeSnap|null>(null); const [runtimeBusy,setRuntimeBusy]=useState(false); const [abortBusy,setAbortBusy]=useState(false); const pollRef=useRef<number|null>(null);
  useEffect(()=>{
@@ -24,6 +36,10 @@ function App(){
   }).catch(()=>setDevice('虚拟设备未连接'));
   return ()=>{if(pollRef.current!==null)window.clearInterval(pollRef.current);};
  },[]);
+ function switchMode(next: WorkspaceMode){
+  setMode(next);
+  window.location.hash = next === 'm1' ? 'm1' : 'legacy';
+ }
  function stopPoll(){if(pollRef.current!==null){window.clearInterval(pollRef.current);pollRef.current=null;}}
  function startPoll(runId:string){stopPoll();pollRef.current=window.setInterval(()=>{fetch(`/api/experiments/d3/runs/${runId}`).then(r=>{if(!r.ok)throw new Error(`运行查询失败：${r.status}`);return r.json();}).then((snap:RuntimeSnap)=>{setRuntime(snap);if(['COMPLETED','ABORTED_IDLE','FAILED','FAULT_LATCHED'].includes(snap.status)){stopPoll();setRuntimeBusy(false);}}).catch(e=>{setError(e.message);stopPoll();setRuntimeBusy(false);});},200);}
  function run(){setBusy(true);setError('');setResult(null);setWave([]);setForce([]);const scheme=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(`${scheme}://${location.host}/ws/simulate`);ws.onopen=()=>ws.send(JSON.stringify({sample_rate_hz:250,heart_rate_bpm:72,target_forces:[40,80,120],stabilize_s:.8,acquire_s:5}));ws.onmessage=(event)=>{const message=JSON.parse(event.data);if(message.type==='samples'){setWave(v=>[...v,...message.data.map((x:{pulse:number})=>x.pulse)].slice(-300));setForce(v=>[...v,...message.data.map((x:{force:number})=>x.force)].slice(-300));}if(message.type==='complete'){setResult({manifest:message.manifest,report:message.report});setBusy(false);}if(message.type==='error'){setError(message.message);setBusy(false);}};ws.onerror=()=>{setError('实时连接失败');setBusy(false);};}
@@ -34,7 +50,20 @@ function App(){
  function abortRuntime(){if(!runtime)return;setAbortBusy(true);setError('');fetch(`/api/experiments/d3/runs/${runtime.run_id}/abort`,{method:'POST'}).then(r=>{if(!r.ok)throw new Error(`ABORT失败：${r.status}`);return r.json();}).then((snap:RuntimeSnap)=>setRuntime(snap)).catch(e=>setError(e.message)).finally(()=>setAbortBusy(false));}
  function points(values:number[],height:number){if(values.length<2)return '';const min=Math.min(...values),max=Math.max(...values),span=max-min||1;return values.map((v,i)=>`${i/(values.length-1)*100},${height-(v-min)/span*height}`).join(' ')}
  const abortEnabled=!!runtime&&runtime.status==='RUNNING'&&ABORTABLE.has(runtime.state)&&!abortBusy;
- return <main><header><div><p className="eyebrow">ADAPTIVE RADIAL PULSE · D3</p><h1>自动施压安全数字仿真</h1><p>设备状态机 → 安全监督 → 故障矩阵 → 可重放报告</p></div><div className="statusGroup"><span className="status">{health}</span><span className="status">{device}</span></div></header>
+ return <main>
+ <header>
+  <div>
+   <p className="eyebrow">ADAPTIVE RADIAL PULSE · M1 / D3</p>
+   <h1>{mode==='m1'?'M1 工程分析 UI':'自动施压安全数字仿真'}</h1>
+   <p>{mode==='m1'?'P3C API → 会话/波形/质量/审计视图（非医学诊断）':'设备状态机 → 安全监督 → 故障矩阵 → 可重放报告'}</p>
+  </div>
+  <div className="statusGroup"><span className="status">{health}</span><span className="status">{device}</span></div>
+ </header>
+ <nav className="m1Nav" aria-label="工作区切换">
+  <button type="button" className={mode==='m1'?'':'secondary'} aria-pressed={mode==='m1'} onClick={()=>switchMode('m1')}>M1 Analysis</button>
+  <button type="button" className={mode==='legacy'?'':'secondary'} aria-pressed={mode==='legacy'} onClick={()=>switchMode('legacy')}>D3 Simulation / Legacy</button>
+ </nav>
+ {mode==='m1' ? <M1Workspace/> : <>
  <section className="controls d3Controls"><div><h2>D3正常Profile运行</h2><p>启动会话 · 设备侧状态机 · ABORT→RETRACT→卸载 · 合成相对单位，非人体安全验证</p></div><div className="buttonRow"><button onClick={startRuntime} disabled={runtimeBusy}> {runtimeBusy?'运行中…':'启动正常Profile'} </button><button className="danger" onClick={abortRuntime} disabled={!abortEnabled}>{abortBusy?'ABORT中…':'ABORT'}</button></div></section>
  {runtime&&<><section className="metrics"><article><small>运行状态</small><strong>{runtime.status}</strong></article><article><small>设备状态</small><strong>{runtime.state}</strong></article><article><small>目标载荷</small><strong>{runtime.target_force_au??'—'} au</strong></article><article><small>实际载荷</small><strong>{runtime.actual_force_au.toFixed(2)} au</strong></article><article><small>位移</small><strong>{runtime.position_au.toFixed(3)} au</strong></article><article><small>控制命令</small><strong>{runtime.command.toFixed(3)}</strong></article><article><small>当前 tick</small><strong>{runtime.tick}</strong></article><article><small>卸载完成</small><strong>{runtime.unload_complete?'是':'否'}</strong></article></section>
  <section><div className="sectionHeading"><div><h2>运行状态时间线</h2><p>最终状态：{runtime.final_state??'进行中'} · run {runtime.run_id.slice(0,8)}</p></div></div><div className="timeline">{runtime.timeline.map(item=><article key={`t-${item.tick}-${item.state}`}><div className="tick">T{item.tick}</div><div><h3>{item.state}</h3></div></article>)}</div>
@@ -49,6 +78,8 @@ function App(){
  {wave.length>1&&<section><h2>实时数据</h2><p>脉搏通道</p><svg className="chart" viewBox="0 0 100 50" preserveAspectRatio="none"><polyline points={points(wave,50)}/></svg><p>载荷通道</p><svg className="chart force" viewBox="0 0 100 50" preserveAspectRatio="none"><polyline points={points(force,50)}/></svg></section>}
  {error&&<p className="error">{error}</p>}{result&&<><section className="metrics"><article><small>有效分析</small><strong>{result.report.analysis_allowed?'通过':'阻断'}</strong></article><article><small>完整帧</small><strong>{result.manifest.statistics.frame_count}</strong></article><article><small>丢帧</small><strong>{result.manifest.statistics.missing_frame_count}</strong></article><article><small>最佳模拟载荷（相对值）</small><strong>{result.report.best_target_force===null?'—':result.report.best_target_force/1000}</strong></article></section>
  <section><h2>各载荷平台结果</h2><div className="steps">{result.report.steps.map(s=><article key={s.target_force}><div className="bar" style={{height:`${Math.max(10,(s.pulse_amplitude??0)/2000)}px`}}/><h3>{s.target_force/1000}</h3><p>质量：{s.quality_label}</p><p>心率：{s.heart_rate_bpm?.toFixed(1)??'已阻断'} bpm</p></article>)}</div></section><footer>{result.report.disclaimer}</footer></>}
- {!result&&!runtime&&!d3&&<section className="empty"><div className="pulse">∿</div><h2>尚未生成会话</h2><p>启动模拟后将显示数据完整性、质量门控和压力响应。</p></section>}</main>
+ {!result&&!runtime&&!d3&&<section className="empty"><div className="pulse">∿</div><h2>尚未生成会话</h2><p>启动模拟后将显示数据完整性、质量门控和压力响应。</p></section>}
+ </>}
+ </main>
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
