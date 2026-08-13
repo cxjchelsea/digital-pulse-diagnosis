@@ -164,6 +164,31 @@ jobs:
           name: m1-p3b-acceptance
           path: artifacts/acceptance/m1-p3b-acceptance.json
 
+      - name: Run M1-P3C formal acceptance
+        run: python scripts/generate_m1_p3c_acceptance.py
+
+      - name: Assert M1-P3C formal acceptance
+        run: >
+          python -c "import json, subprocess; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p3c-acceptance.json').read_text(encoding='utf-8'));
+          expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('software_commit_sha') == expected_sha;
+          assert d.get('api_version') == 'm1-p3c-api-v1';
+          assert d.get('http_testclient_exercised') is True;
+          assert d.get('report_api_present') is False;
+          assert d.get('formal_parameters_allowed') is False;
+          assert d.get('formal_parameters') is None;
+          assert 'synthetic_only' in d.get('limitations_required', []);
+          assert 'pending_h1_calibration' in d.get('limitations_required', [])"
+
+      - name: Upload M1-P3C acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-p3c-acceptance
+          path: artifacts/acceptance/m1-p3c-acceptance.json
+
   web:
     name: Web production build
     runs-on: ubuntu-latest

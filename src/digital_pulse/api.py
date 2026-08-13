@@ -6,8 +6,9 @@ import os
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .device import DeviceSimulator, PressureStep, SimulationConfig
@@ -15,6 +16,9 @@ from .calibration import CalibrationModel, CalibrationRecord
 from .d2_experiment import D2FaultConfig, D2PressureStep, PressureProfile, run_d2_experiment
 from .d3_api import create_d3_router
 from .firmware import DeviceClient, FirmwareSimulator
+from .m1_api import create_m1_router
+from .m1_api.errors import app_error_to_http
+from .m1_app import M1AppError
 from .pipeline import process_session
 from .protocol import CommandCode, decode_response
 from .session import SessionWriter, capture_frames
@@ -45,7 +49,13 @@ def create_app(data_root: Path | None = None) -> FastAPI:
     root.mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="Adaptive Radial Pulse API", version="0.2.0")
     app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
+    app.include_router(create_m1_router(root))
     app.include_router(create_d3_router(root))
+
+    @app.exception_handler(M1AppError)
+    async def m1_app_exception_handler(_: Request, exc: M1AppError):
+        http = app_error_to_http(exc)
+        return JSONResponse(status_code=http.status_code, content={"detail": http.detail})
 
     @app.get("/api/health")
     def health():
