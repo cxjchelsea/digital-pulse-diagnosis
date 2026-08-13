@@ -108,7 +108,7 @@ export function SessionOverview({
       <p>
         限制项：{detail.limitations.length ? detail.limitations.join(', ') : '无'}
       </p>
-      <p className="m1Note">报告将在 P3E 提供（本阶段不生成正式报告）。</p>
+      <p className="m1Note">报告能力将在 P3E 提供；本阶段仅做工程分析视图。</p>
     </section>
   );
 }

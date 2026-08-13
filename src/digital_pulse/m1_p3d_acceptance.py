@@ -92,14 +92,11 @@ def _scan_production_web(root: Path) -> dict[str, Any]:
         for pattern in FORBIDDEN_ALGO_PATTERNS:
             if re.search(pattern, text):
                 algo_hits.append(f"{relative}:{pattern}")
-        if re.search(r"生成正式报告|预验收通过|可用于临床|/report", text):
-            # 允许明确的 P3E 占位提示
-            if "报告将在 P3E 提供" in text and "生成正式报告" not in text:
-                continue
-            if re.search(r"生成正式报告|预验收通过|可用于临床", text):
-                report_ui_hits.append(relative)
-            if re.search(r"['\`]/api/m1/.*/report", text):
-                report_ui_hits.append(relative)
+        # 禁止正式报告能力；允许“报告将在 P3E 提供”类占位说明
+        if re.search(r"(?<!不)生成正式报告|预验收通过|可用于临床", text):
+            report_ui_hits.append(relative)
+        if re.search(r"['\"`]/api/m1/[^'\"`]*report", text):
+            report_ui_hits.append(relative)
     markers = {
         "m1_ui_present": (web_src / "m1" / "M1Workspace.tsx").is_file(),
         "session_list_ui_present": (web_src / "m1" / "components" / "SessionList.tsx").is_file(),
@@ -155,7 +152,14 @@ def run_m1_p3d_acceptance(
     markers = scan["markers"]
     gates = [
         _gate("web_build_passed", web_build_passed),
-        _gate("web_tests_passed", web_tests_passed, **dict(web_test_summary)),
+        _gate(
+            "web_tests_passed",
+            web_tests_passed,
+            returncode=web_test_summary.get("returncode"),
+            tests_passed_count=web_test_summary.get("passed"),
+            tests_failed_count=web_test_summary.get("failed"),
+            tail=web_test_summary.get("tail"),
+        ),
         _gate("m1_ui_present", bool(markers["m1_ui_present"])),
         _gate("session_list_ui_present", bool(markers["session_list_ui_present"])),
         _gate("raw_waveform_ui_present", bool(markers["raw_waveform_ui_present"])),
