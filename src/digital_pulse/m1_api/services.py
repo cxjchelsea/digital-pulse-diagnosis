@@ -46,7 +46,11 @@ class M1AnalysisQueryService:
         if self._sessions_root.is_dir():
             for child in sorted(self._sessions_root.iterdir(), key=lambda item: item.name):
                 if child.is_dir() and (child / "manifest.json").is_file():
-                    summaries.append(self._session_summary(child.name))
+                    # 单个损坏会话不得拖垮整个枚举接口
+                    try:
+                        summaries.append(self._session_summary(child.name))
+                    except M1AppError:
+                        summaries.append(self._unavailable_session_summary(child.name))
         return SessionsResponse(api_version=M1_API_VERSION, sessions=summaries)
 
     def session_detail(self, session_id: str) -> SessionDetail:
@@ -140,18 +144,45 @@ class M1AnalysisQueryService:
             manifest_path = root / "manifest.json"
             if exc.code in {"session_not_found", "path_escape", "symlink_escape"} or not manifest_path.is_file():
                 raise
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                # 根 manifest 损坏时仍返回稳定摘要，避免 GET /sessions 整体 500
+                return self._unavailable_session_summary(session_id)
+            if not isinstance(payload, dict):
+                return self._unavailable_session_summary(session_id)
+            integrity = payload.get("integrity_summary")
+            raw_persistence_status = "unknown"
+            if isinstance(integrity, dict):
+                raw_persistence_status = str(integrity.get("raw_persistence_status", "unknown"))
+            completion_reason = payload.get("completion_reason")
+            if completion_reason is not None and not isinstance(completion_reason, str):
+                completion_reason = None
             return SessionSummary(
                 api_version=M1_API_VERSION,
                 session_id=str(payload.get("session_id", session_id)),
                 source_type=str(payload.get("source_type", "unknown")),
                 completed=bool(payload.get("completed", False)),
-                completion_reason=payload.get("completion_reason"),
-                raw_persistence_status=str(payload.get("integrity_summary", {}).get("raw_persistence_status", "unknown")),
+                completion_reason=completion_reason,
+                raw_persistence_status=raw_persistence_status,
                 app_registered=False,
                 committed_run_count=0,
                 current_run_id=None,
             )
+
+    @staticmethod
+    def _unavailable_session_summary(session_id: str) -> SessionSummary:
+        return SessionSummary(
+            api_version=M1_API_VERSION,
+            session_id=session_id,
+            source_type="unknown",
+            completed=False,
+            completion_reason=None,
+            raw_persistence_status="unknown",
+            app_registered=False,
+            committed_run_count=0,
+            current_run_id=None,
+        )
 
     def _summary_from_loaded(self, loaded) -> SessionSummary:
         return SessionSummary(

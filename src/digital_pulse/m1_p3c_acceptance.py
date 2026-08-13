@@ -75,6 +75,15 @@ def run_m1_p3c_acceptance(
         traversal = client.get("/api/m1/sessions/%2e%2e")
         windows = client.get("/api/m1/sessions/C:%5Ctmp")
         quality = client.post(f"/api/m1/sessions/{weak.session_id}/replay", json={"software_commit_sha": software_commit_sha})
+        broken = root / "broken-corrupt-manifest"
+        broken.mkdir()
+        (broken / "manifest.json").write_text("NOT-JSON{{{", encoding="utf-8")
+        sessions_with_broken = client.get("/api/m1/sessions")
+        invalid_request = client.post(
+            f"/api/m1/sessions/{recorded.session_id}/replay",
+            content=b"{",
+            headers={"content-type": "application/json"},
+        )
 
         gates.extend(
             [
@@ -90,6 +99,16 @@ def run_m1_p3c_acceptance(
                         "/api/m1/sessions/{session_id}/runs/{run_id}",
                         "/api/m1/sessions/{session_id}/replay",
                     ],
+                ),
+                _gate(
+                    "broken_session_isolation_and_validation_envelope",
+                    sessions_with_broken.status_code == 200
+                    and "broken-corrupt-manifest" in [item["session_id"] for item in sessions_with_broken.json().get("sessions", [])]
+                    and recorded.session_id in [item["session_id"] for item in sessions_with_broken.json().get("sessions", [])]
+                    and invalid_request.status_code == 422
+                    and invalid_request.json().get("detail", {}).get("error", {}).get("code") == "invalid_request",
+                    sessions_status=sessions_with_broken.status_code,
+                    validation_status=invalid_request.status_code,
                 ),
                 _gate(
                     "read_only_get_and_default_replay_do_not_mutate",

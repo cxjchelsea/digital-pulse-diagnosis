@@ -166,6 +166,52 @@ def test_p3c_path_and_run_identifiers_fail_with_sanitized_http_errors(tmp_path: 
     assert "Traceback" not in combined
 
 
+def test_p3c_corrupt_session_manifest_is_isolated_in_sessions_list(tmp_path: Path):
+    recorded, _ = _record_and_register(tmp_path)
+    broken = tmp_path / "broken-corrupt-manifest"
+    broken.mkdir()
+    (broken / "manifest.json").write_text("NOT-JSON{{{", encoding="utf-8")
+
+    response = _client(tmp_path).get("/api/m1/sessions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    session_ids = [item["session_id"] for item in payload["sessions"]]
+    assert recorded.session_id in session_ids
+    assert "broken-corrupt-manifest" in session_ids
+    broken_summary = next(item for item in payload["sessions"] if item["session_id"] == "broken-corrupt-manifest")
+    assert broken_summary["app_registered"] is False
+    assert broken_summary["committed_run_count"] == 0
+    assert session_ids == sorted(session_ids)
+
+
+def test_p3c_request_validation_errors_use_stable_error_envelope(tmp_path: Path):
+    recorded, _ = _record_and_register(tmp_path)
+    client = _client(tmp_path)
+
+    invalid_json = client.post(
+        f"/api/m1/sessions/{recorded.session_id}/replay",
+        content=b"{",
+        headers={"content-type": "application/json"},
+    )
+    wrong_type = client.post(
+        f"/api/m1/sessions/{recorded.session_id}/replay",
+        json={"persist": []},
+    )
+    extra_field = client.post(
+        f"/api/m1/sessions/{recorded.session_id}/replay",
+        json={"extra": 1},
+    )
+
+    for response in (invalid_json, wrong_type, extra_field):
+        assert response.status_code == 422
+        error = response.json()["detail"]["error"]
+        assert error["code"] == "invalid_request"
+        assert error["message"] == "Request validation failed."
+        assert "Traceback" not in response.text
+        assert str(tmp_path) not in response.text
+
+
 def test_p3c_missing_run_and_cross_link_tamper_fail_closed_over_http(tmp_path: Path):
     recorded, _ = _record_and_register(tmp_path)
     client = _client(tmp_path)

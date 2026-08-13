@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -17,7 +19,7 @@ from .d2_experiment import D2FaultConfig, D2PressureStep, PressureProfile, run_d
 from .d3_api import create_d3_router
 from .firmware import DeviceClient, FirmwareSimulator
 from .m1_api import create_m1_router
-from .m1_api.errors import app_error_to_http
+from .m1_api.errors import app_error_to_http, error_envelope
 from .m1_app import M1AppError
 from .pipeline import process_session
 from .protocol import CommandCode, decode_response
@@ -56,6 +58,16 @@ def create_app(data_root: Path | None = None) -> FastAPI:
     async def m1_app_exception_handler(_: Request, exc: M1AppError):
         http = app_error_to_http(exc)
         return JSONResponse(status_code=http.status_code, content={"detail": http.detail})
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+        # M1-P3C 要求稳定 sanitized error envelope；非 /api/m1 路径保持 FastAPI 默认结构
+        if request.url.path.startswith("/api/m1"):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": error_envelope("invalid_request", "Request validation failed.")},
+            )
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
     @app.get("/api/health")
     def health():
