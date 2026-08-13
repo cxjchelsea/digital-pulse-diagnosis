@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -99,23 +100,30 @@ def _run_existing(script: str, artifact: str) -> bool:
     return proc.returncode == 0 and _load_acceptance(existing)
 
 
+def _npm_command(*args: str) -> list[str]:
+    # Windows 上 npm 常为 npm.cmd；Unix 上 shell=True+list 会丢掉子命令。
+    npm_executable = "npm.cmd" if os.name == "nt" else "npm"
+    return [npm_executable, *args]
+
+
 def _run_web_tests() -> tuple[bool, dict[str, object]]:
     proc = subprocess.run(
-        ["npm", "test", "--", "--run"],
+        _npm_command("test", "--", "--run"),
         cwd=ROOT / "web",
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
         check=False,
-        shell=True,
     )
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    passed_match = re.search(r"(\d+)\s+passed", output)
-    failed_match = re.search(r"(\d+)\s+failed", output)
+    # Vitest 会先打印 "Test Files N passed"，再打印 "Tests N passed"；取测试用例计数。
+    tests_match = re.search(r"(?:^|\n)\s*Tests\s+(\d+)\s+passed", output)
+    files_match = re.search(r"Test Files\s+(\d+)\s+passed", output)
+    failed_match = re.search(r"(?:^|\n)\s*(?:Tests\s+)?(\d+)\s+failed", output)
     summary = {
         "returncode": proc.returncode,
-        "passed": int(passed_match.group(1)) if passed_match else None,
+        "passed": int(tests_match.group(1)) if tests_match else (int(files_match.group(1)) if files_match else None),
         "failed": int(failed_match.group(1)) if failed_match else None,
         "tail": "\n".join(output.strip().splitlines()[-40:]),
     }
@@ -124,18 +132,16 @@ def _run_web_tests() -> tuple[bool, dict[str, object]]:
 
 def _run_web_build() -> bool:
     install = subprocess.run(
-        ["npm", "ci"],
+        _npm_command("ci"),
         cwd=ROOT / "web",
         check=False,
-        shell=True,
     )
     if install.returncode != 0:
         return False
     build = subprocess.run(
-        ["npm", "run", "build"],
+        _npm_command("run", "build"),
         cwd=ROOT / "web",
         check=False,
-        shell=True,
     )
     return build.returncode == 0
 
