@@ -189,8 +189,40 @@ jobs:
           name: m1-p3c-acceptance
           path: artifacts/acceptance/m1-p3c-acceptance.json
 
+      - name: Setup Node for M1-P3D acceptance
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Run M1-P3D formal acceptance
+        run: python scripts/generate_m1_p3d_acceptance.py
+
+      - name: Assert M1-P3D formal acceptance
+        run: >
+          python -c "import json, subprocess; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p3d-acceptance.json').read_text(encoding='utf-8'));
+          expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('software_commit_sha') == expected_sha;
+          assert d.get('report_ui_present') is False;
+          assert d.get('medical_conclusion_ui_present') is False;
+          assert d.get('web_build_passed') is True;
+          assert d.get('web_tests_passed') is True;
+          assert d.get('p3c_regression_passed') is True;
+          assert d.get('p3b_regression_passed') is True;
+          assert d.get('p2_regression_passed') is True"
+
+      - name: Upload M1-P3D acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-p3d-acceptance
+          path: artifacts/acceptance/m1-p3d-acceptance.json
+
   web:
-    name: Web production build
+    name: Web production build and M1-P3D tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -206,7 +238,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Install and build
+      - name: Install, test, and build
         run: |
           npm ci
+          npm test -- --run
           npm run build
