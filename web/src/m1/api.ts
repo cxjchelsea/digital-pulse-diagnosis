@@ -9,6 +9,7 @@ import type {
   SessionDetail,
   SessionsResponse,
 } from './types';
+import {isSentinelSoftwareCommitSha} from './softwareCommit';
 
 const API_BASE = '/api/m1';
 
@@ -172,16 +173,29 @@ export function replayM1Session(
   body: ReplayRequest,
   signal?: AbortSignal,
 ): Promise<ReplayResponse> {
+  // 禁止伪造全零 SHA：未提供则省略字段，由调用方决定是否允许持久化。
+  const payload: {
+    persist: boolean;
+    run_id: string | null;
+    software_commit_sha?: string;
+  } = {
+    persist: body.persist ?? false,
+    run_id: body.run_id ?? null,
+  };
+  const commitSha = body.software_commit_sha?.trim().toLowerCase();
+  if (
+    commitSha &&
+    /^[0-9a-f]{40}$/.test(commitSha) &&
+    !isSentinelSoftwareCommitSha(commitSha)
+  ) {
+    payload.software_commit_sha = commitSha;
+  }
   return requestJson<ReplayResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/replay`,
     {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        persist: body.persist ?? false,
-        run_id: body.run_id ?? null,
-        software_commit_sha: body.software_commit_sha ?? '0'.repeat(40),
-      }),
+      body: JSON.stringify(payload),
     },
     signal,
   );

@@ -238,8 +238,13 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Install, test, and build
+      - name: Install and test
         run: |
           npm ci
           npm test -- --run
-          npm run build
+
+      - name: Production build with software provenance SHA
+        env:
+          # 与 checkout ref 对齐：PR 用 head.sha，push 用 github.sha；避免合成 merge SHA
+          VITE_M1_SOFTWARE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: npm run build

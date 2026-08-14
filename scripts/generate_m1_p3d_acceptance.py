@@ -130,7 +130,17 @@ def _parse_vitest_counts(output: str) -> tuple[int | None, int | None]:
     return passed_count, failed_count
 
 
-def _run_web_tests() -> tuple[bool, dict[str, object]]:
+def _web_env(software_commit_sha: str | None = None) -> dict[str, str]:
+    """向 Vite/Vitest 注入真实软件提交，禁止前端回落到全零哨兵。"""
+    env = dict(os.environ)
+    sha = (software_commit_sha or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{40}", sha) and sha != "0" * 40:
+        env["VITE_M1_SOFTWARE_COMMIT_SHA"] = sha
+        env["GITHUB_SHA"] = sha
+    return env
+
+
+def _run_web_tests(*, software_commit_sha: str) -> tuple[bool, dict[str, object]]:
     proc = subprocess.run(
         _npm_command("test", "--", "--run"),
         cwd=ROOT / "web",
@@ -139,6 +149,7 @@ def _run_web_tests() -> tuple[bool, dict[str, object]]:
         encoding="utf-8",
         errors="replace",
         check=False,
+        env=_web_env(software_commit_sha),
     )
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
     passed_count, failed_count = _parse_vitest_counts(output)
@@ -152,11 +163,12 @@ def _run_web_tests() -> tuple[bool, dict[str, object]]:
     return proc.returncode == 0, summary
 
 
-def _run_web_build() -> bool:
+def _run_web_build(*, software_commit_sha: str) -> bool:
     install = subprocess.run(
         _npm_command("ci"),
         cwd=ROOT / "web",
         check=False,
+        env=_web_env(software_commit_sha),
     )
     if install.returncode != 0:
         return False
@@ -164,6 +176,7 @@ def _run_web_build() -> bool:
         _npm_command("run", "build"),
         cwd=ROOT / "web",
         check=False,
+        env=_web_env(software_commit_sha),
     )
     return build.returncode == 0
 
@@ -192,8 +205,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.skip_web_install_build:
         web_build_passed = True
     else:
-        web_build_passed = _run_web_build()
-    web_tests_passed, web_test_summary = _run_web_tests()
+        web_build_passed = _run_web_build(software_commit_sha=software_commit_sha)
+    web_tests_passed, web_test_summary = _run_web_tests(software_commit_sha=software_commit_sha)
 
     result = run_m1_p3d_acceptance(
         root=ROOT,

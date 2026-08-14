@@ -74,14 +74,14 @@ export function RunAuditPanel({
           <p>{detailError}</p>
         </div>
       ) : null}
-      {runDetail ? (
+      {runDetail?.run ? (
         <div data-testid="m1-run-detail">
           <h3>Run 详情</h3>
           <p>
             {runDetail.run.run_id} · {runDetail.run.state} · {runDetail.run.execution_mode}
           </p>
           <ul className="m1KeyList">
-            {runDetail.assets.map((asset) => (
+            {(runDetail.assets ?? []).map((asset) => (
               <li key={`${asset.role}-${asset.relative_path}`}>
                 工件引用 role={asset.role} · relative_path={asset.relative_path} · size=
                 {asset.size_bytes}

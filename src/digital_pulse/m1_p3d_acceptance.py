@@ -121,6 +121,20 @@ def _scan_production_web(root: Path) -> dict[str, Any]:
             "pending_h1_calibration_visible": "pending_h1_calibration" in overview_text,
             "typed_api_client_present": "listM1Sessions" in api_text and "replayM1Session" in api_text,
             "race_guard_present": "AbortController" in workspace_text and "shouldDropStaleResponse" in workspace_text,
+            # 禁止客户端伪造全零 software_commit_sha 作为默认审计 provenance
+            "no_fabricated_zero_software_commit_sha": (
+                "software_commit_sha: body.software_commit_sha ??" not in api_text
+                and "isSentinelSoftwareCommitSha" in api_text
+                and "readClientSoftwareCommitSha" in workspace_text
+            ),
+            "partial_failure_isolation": (
+                "setRunsError" in workspace_text and "await Promise.all" not in workspace_text
+            ),
+            "no_first_run_guessing": (
+                "runsPayload.current_run_id ??" not in workspace_text
+                and "runs[0]" not in workspace_text
+                and "current_run_id" in workspace_text
+            ),
         }
     )
     return {
@@ -176,6 +190,12 @@ def run_m1_p3d_acceptance(
         _gate("pending_h1_calibration_visible", bool(markers["pending_h1_calibration_visible"])),
         _gate("typed_api_client_present", bool(markers["typed_api_client_present"])),
         _gate("race_guard_present", bool(markers["race_guard_present"])),
+        _gate(
+            "no_fabricated_zero_software_commit_sha",
+            bool(markers["no_fabricated_zero_software_commit_sha"]),
+        ),
+        _gate("partial_failure_isolation", bool(markers["partial_failure_isolation"])),
+        _gate("no_first_run_guessing", bool(markers["no_first_run_guessing"])),
         _gate("report_ui_present", False, hits=scan["report_ui_hits"], note="must stay false"),
         _gate("medical_conclusion_ui_present", False, hits=scan["medical_hits"], note="must stay false"),
         _gate("medical_claim_scan_clean", len(scan["medical_hits"]) == 0, hits=scan["medical_hits"]),

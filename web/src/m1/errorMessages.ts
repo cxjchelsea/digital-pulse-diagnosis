@@ -20,11 +20,14 @@ const CODE_LABELS: Record<string, string> = {
 
 export function describeM1ApiError(error: M1ApiError): string {
   const mapped = CODE_LABELS[error.code];
+  if (error.code === 'artifact_conflict') {
+    return CODE_LABELS.artifact_conflict;
+  }
+  // invalid_request 展示调用方给出的工程说明（例如 provenance 拒绝原因）
+  if (error.code === 'invalid_request' && error.message.trim()) {
+    return error.message.trim();
+  }
   if (mapped) {
-    // artifact_conflict 使用固定中文提示
-    if (error.code === 'artifact_conflict') {
-      return mapped;
-    }
     return `${mapped}（${error.code}）`;
   }
   return `请求失败（${error.code}）`;
