@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -99,43 +100,70 @@ def _run_existing(script: str, artifact: str) -> bool:
     return proc.returncode == 0 and _load_acceptance(existing)
 
 
+def _npm_command(*args: str) -> list[str]:
+    # Windows 上 npm 常为 npm.cmd；Unix 上 shell=True+list 会丢掉子命令。
+    npm_executable = "npm.cmd" if os.name == "nt" else "npm"
+    return [npm_executable, *args]
+
+
+def _strip_ansi(text: str) -> str:
+    """移除 Vitest/CI 彩色输出中的 ANSI 转义，便于稳定解析。"""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _parse_vitest_counts(output: str) -> tuple[int | None, int | None]:
+    """解析 Vitest 摘要。
+
+    优先读取 ``Tests N passed``（用例数），否则回退 ``Test Files N passed``。
+    返回 (passed_count, failed_count)；不根据计数判定成功——returncode 仍是权威。
+    """
+    cleaned = _strip_ansi(output)
+    tests_passed = re.search(r"(?:^|\n)\s*Tests\s+.*?(\d+)\s+passed", cleaned)
+    files_passed = re.search(r"Test Files\s+(\d+)\s+passed", cleaned)
+    tests_failed = re.search(r"(?:^|\n)\s*Tests\s+(\d+)\s+failed", cleaned)
+    passed_count = (
+        int(tests_passed.group(1))
+        if tests_passed
+        else (int(files_passed.group(1)) if files_passed else None)
+    )
+    failed_count = int(tests_failed.group(1)) if tests_failed else None
+    return passed_count, failed_count
+
+
 def _run_web_tests() -> tuple[bool, dict[str, object]]:
     proc = subprocess.run(
-        ["npm", "test", "--", "--run"],
+        _npm_command("test", "--", "--run"),
         cwd=ROOT / "web",
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
         check=False,
-        shell=True,
     )
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    passed_match = re.search(r"(\d+)\s+passed", output)
-    failed_match = re.search(r"(\d+)\s+failed", output)
+    passed_count, failed_count = _parse_vitest_counts(output)
     summary = {
         "returncode": proc.returncode,
-        "passed": int(passed_match.group(1)) if passed_match else None,
-        "failed": int(failed_match.group(1)) if failed_match else None,
+        "passed": passed_count,
+        "failed": failed_count,
         "tail": "\n".join(output.strip().splitlines()[-40:]),
     }
+    # 进程退出码权威：解析到的 passed 不得覆盖失败退出。
     return proc.returncode == 0, summary
 
 
 def _run_web_build() -> bool:
     install = subprocess.run(
-        ["npm", "ci"],
+        _npm_command("ci"),
         cwd=ROOT / "web",
         check=False,
-        shell=True,
     )
     if install.returncode != 0:
         return False
     build = subprocess.run(
-        ["npm", "run", "build"],
+        _npm_command("run", "build"),
         cwd=ROOT / "web",
         check=False,
-        shell=True,
     )
     return build.returncode == 0
 
