@@ -145,9 +145,10 @@ describe('replay provenance payload', () => {
       run_id: null,
       software_commit_sha: 'A'.repeat(40),
     });
-    let body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body ?? '{}')) as {
-      software_commit_sha?: string;
-    };
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    let body = JSON.parse(
+      String(((fetchMock.mock.calls[0] as unknown as [RequestInfo, RequestInit?])[1] ?? {}).body ?? '{}'),
+    ) as {software_commit_sha?: string};
     expect(body.software_commit_sha).toBe('a'.repeat(40));
 
     fetchMock.mockClear();
@@ -156,9 +157,10 @@ describe('replay provenance payload', () => {
       run_id: null,
       software_commit_sha: 'abc',
     });
-    body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body ?? '{}')) as {
-      software_commit_sha?: string;
-    };
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    body = JSON.parse(
+      String(((fetchMock.mock.calls[0] as unknown as [RequestInfo, RequestInit?])[1] ?? {}).body ?? '{}'),
+    ) as {software_commit_sha?: string};
     expect(body).not.toHaveProperty('software_commit_sha');
 
     fetchMock.mockClear();
@@ -167,9 +169,10 @@ describe('replay provenance payload', () => {
       run_id: null,
       software_commit_sha: 'g'.repeat(40),
     });
-    body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body ?? '{}')) as {
-      software_commit_sha?: string;
-    };
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    body = JSON.parse(
+      String(((fetchMock.mock.calls[0] as unknown as [RequestInfo, RequestInit?])[1] ?? {}).body ?? '{}'),
+    ) as {software_commit_sha?: string};
     expect(body).not.toHaveProperty('software_commit_sha');
     vi.unstubAllGlobals();
   });
