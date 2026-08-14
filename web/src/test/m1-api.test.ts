@@ -117,6 +117,60 @@ describe('replay provenance payload', () => {
   it('recognizes sentinel and exposes injected client sha in test mode', () => {
     expect(isSentinelSoftwareCommitSha('0'.repeat(40))).toBe(true);
     expect(isSentinelSoftwareCommitSha('c'.repeat(40))).toBe(false);
-    expect(readClientSoftwareCommitSha()).toBe('c'.repeat(40));
+    const injected = readClientSoftwareCommitSha();
+    expect(injected).toMatch(/^[0-9a-f]{40}$/);
+    expect(injected).not.toBe('0'.repeat(40));
+    // 默认 Vitest 模式注入固定非哨兵值；允许测试覆盖 env 覆盖
+    expect(injected).toBe('c'.repeat(40));
+  });
+
+  it('normalizes uppercase sha and rejects short/invalid payloads', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          api_version: 'm1-p3c-api-v1',
+          session_id: 'session-a',
+          run_id: null,
+          persisted: false,
+          sp_result_sha256: 'f'.repeat(64),
+          analysis: {formal_parameters: null},
+        }),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await replayM1Session('session-a', {
+      persist: false,
+      run_id: null,
+      software_commit_sha: 'A'.repeat(40),
+    });
+    let body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body ?? '{}')) as {
+      software_commit_sha?: string;
+    };
+    expect(body.software_commit_sha).toBe('a'.repeat(40));
+
+    fetchMock.mockClear();
+    await replayM1Session('session-a', {
+      persist: false,
+      run_id: null,
+      software_commit_sha: 'abc',
+    });
+    body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body ?? '{}')) as {
+      software_commit_sha?: string;
+    };
+    expect(body).not.toHaveProperty('software_commit_sha');
+
+    fetchMock.mockClear();
+    await replayM1Session('session-a', {
+      persist: false,
+      run_id: null,
+      software_commit_sha: 'g'.repeat(40),
+    });
+    body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body ?? '{}')) as {
+      software_commit_sha?: string;
+    };
+    expect(body).not.toHaveProperty('software_commit_sha');
+    vi.unstubAllGlobals();
   });
 });

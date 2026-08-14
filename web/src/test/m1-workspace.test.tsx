@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {M1Workspace} from '../m1/M1Workspace';
+import * as softwareCommit from '../m1/softwareCommit';
 import {
   apiErrorEnvelope,
   fixtureSessions,
@@ -501,6 +502,48 @@ describe('M1Workspace UI', () => {
     await user.type(screen.getByTestId('m1-replay-run-id'), 'run-new');
     await user.click(screen.getByTestId('m1-replay-submit'));
     expect(await screen.findByTestId('m1-replay-result')).toHaveTextContent('已提交 Run');
+  });
+
+  it('blocks persist=true before POST when software commit SHA is unavailable', async () => {
+    const user = userEvent.setup();
+    const shaSpy = vi.spyOn(softwareCommit, 'readClientSoftwareCommitSha').mockReturnValue(null);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+        return jsonResponse(fixtureSessions);
+      }
+      if (url.endsWith('/api/m1/sessions/session-a')) {
+        return jsonResponse(makeSessionDetail('session-a'));
+      }
+      if (url.includes('/sessions/session-a/runs') && !url.includes('/runs/run-')) {
+        return jsonResponse(makeRuns('session-a'));
+      }
+      if (url.includes('/sessions/session-a/runs/run-a1')) {
+        return jsonResponse(makeRunDetail('session-a', 'run-a1'));
+      }
+      if (url.includes('/channels')) {
+        return jsonResponse(makeChannels('session-a', url.includes('run_id=') ? 'run-a1' : null));
+      }
+      if (url.includes('/analysis')) {
+        return jsonResponse(makeBlockedAnalysis('session-a', 'run-a1'));
+      }
+      if (url.includes('/replay')) {
+        throw new Error('persist replay must not be posted without software commit');
+      }
+      return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<M1Workspace />);
+    await user.click(await screen.findByRole('button', {name: /session-a/}));
+    await screen.findByTestId('m1-replay-panel');
+    await user.click(screen.getByTestId('m1-replay-persist'));
+    await user.type(screen.getByTestId('m1-replay-run-id'), 'run-blocked');
+    await user.click(screen.getByTestId('m1-replay-submit'));
+    expect(await screen.findByTestId('m1-replay-error')).toHaveTextContent('VITE_M1_SOFTWARE_COMMIT_SHA');
+    expect(screen.getByTestId('m1-replay-submit')).not.toBeDisabled();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/replay'))).toBe(false);
+    shaSpy.mockRestore();
   });
 
   it('discards stale replay result after session switch', async () => {

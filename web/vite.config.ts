@@ -3,6 +3,10 @@ import {defineConfig} from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 function resolveSoftwareCommitSha(mode: string): string {
+  // Vitest 固定注入非哨兵 SHA，避免 CI/本机 env 污染断言确定性
+  if (mode === 'test') {
+    return 'c'.repeat(40);
+  }
   const env = loadEnv(mode, process.cwd(), '');
   const candidates = [
     env.VITE_M1_SOFTWARE_COMMIT_SHA,
@@ -16,10 +20,6 @@ function resolveSoftwareCommitSha(mode: string): string {
         return normalized;
       }
     }
-  }
-  // Vitest 模式提供可验证的非哨兵 SHA，便于对抗测试覆盖持久化重放
-  if (mode === 'test') {
-    return 'c'.repeat(40);
   }
   // 生产/开发未注入时留空：持久化重放将被前端拒绝，避免伪造全零
   return '';
