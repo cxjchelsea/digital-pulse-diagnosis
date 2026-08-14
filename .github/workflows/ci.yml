@@ -239,6 +239,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install, test, and build
+        env:
+          VITE_M1_SOFTWARE_COMMIT_SHA: ${{ github.sha }}
         run: |
           npm ci
           npm test -- --run

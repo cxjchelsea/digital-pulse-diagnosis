@@ -10,6 +10,7 @@ import {
   replayM1Session,
 } from './api';
 import {describeM1ApiError} from './errorMessages';
+import {readClientSoftwareCommitSha} from './softwareCommit';
 import {BeatReferencePanel} from './components/BeatReferencePanel';
 import {QualityPanel, IntegrityPanel} from './components/QualityPanel';
 import {ReplayPanel} from './components/ReplayPanel';
@@ -295,36 +296,57 @@ export function M1Workspace() {
       // 无 run 时仅加载 raw
       void loadChannels(sessionId, null, sessionToken, runToken);
 
-      try {
-        const [detail, runsPayload] = await Promise.all([
-          getM1Session(sessionId, controller.signal),
-          listM1Runs(sessionId, controller.signal),
-        ]);
-        if (sessionToken !== sessionTokenRef.current) {
-          return;
+      // 会话详情与 Run 列表独立加载，避免单端点失败拖垮另一面板
+      void (async () => {
+        try {
+          const detail = await getM1Session(sessionId, controller.signal);
+          if (sessionToken !== sessionTokenRef.current) {
+            return;
+          }
+          setSessionDetail(detail);
+        } catch (error) {
+          if (isAbortError(error) || controller.signal.aborted) {
+            return;
+          }
+          if (sessionToken !== sessionTokenRef.current) {
+            return;
+          }
+          setSessionError(describeM1ApiError(error as M1ApiError));
+        } finally {
+          if (!controller.signal.aborted && sessionToken === sessionTokenRef.current) {
+            setSessionLoading(false);
+          }
         }
-        setSessionDetail(detail);
-        setRuns(runsPayload.runs);
-        setCurrentRunId(runsPayload.current_run_id);
+      })();
 
-        const preferredRun = runsPayload.current_run_id ?? runsPayload.runs[0]?.run_id ?? null;
-        if (preferredRun) {
-          void selectRun(sessionId, preferredRun, sessionToken);
+      void (async () => {
+        try {
+          const runsPayload = await listM1Runs(sessionId, controller.signal);
+          if (sessionToken !== sessionTokenRef.current) {
+            return;
+          }
+          setRuns(runsPayload.runs);
+          setCurrentRunId(runsPayload.current_run_id);
+          // 仅自动选择后端声明的 current_run_id；禁止回退到列表首项猜测
+          if (runsPayload.current_run_id) {
+            void selectRun(sessionId, runsPayload.current_run_id, sessionToken);
+          }
+        } catch (error) {
+          if (isAbortError(error) || controller.signal.aborted) {
+            return;
+          }
+          if (sessionToken !== sessionTokenRef.current) {
+            return;
+          }
+          setRuns([]);
+          setCurrentRunId(null);
+          setRunsError(describeM1ApiError(error as M1ApiError));
+        } finally {
+          if (!controller.signal.aborted && sessionToken === sessionTokenRef.current) {
+            setRunsLoading(false);
+          }
         }
-      } catch (error) {
-        if (isAbortError(error) || controller.signal.aborted) {
-          return;
-        }
-        if (sessionToken !== sessionTokenRef.current) {
-          return;
-        }
-        setSessionError(describeM1ApiError(error as M1ApiError));
-      } finally {
-        if (!controller.signal.aborted && sessionToken === sessionTokenRef.current) {
-          setSessionLoading(false);
-          setRunsLoading(false);
-        }
-      }
+      })();
     },
     [loadChannels, selectRun],
   );
@@ -336,26 +358,52 @@ export function M1Workspace() {
     const sessionId = selectedSessionId;
     setReplayBusy(true);
     setReplayError(null);
+    const softwareCommitSha = readClientSoftwareCommitSha();
+    // 持久化重放必须携带真实软件提交，禁止全零哨兵进入审计 provenance
+    if (persist && !softwareCommitSha) {
+      setReplayBusy(false);
+      setReplayResult(null);
+      setReplayError({
+        code: 'invalid_request',
+        message:
+          '持久化重放需要构建期注入的真实 VITE_M1_SOFTWARE_COMMIT_SHA，禁止使用全零伪造 provenance。',
+        httpStatus: 0,
+      });
+      return;
+    }
     try {
       const result = await replayM1Session(sessionId, {
         persist,
         run_id: runId,
+        ...(softwareCommitSha ? {software_commit_sha: softwareCommitSha} : {}),
       });
       if (selectedSessionIdRef.current !== sessionId) {
         return;
       }
       setReplayResult(result);
       if (persist) {
-        const [detail, runsPayload] = await Promise.all([
-          getM1Session(sessionId),
-          listM1Runs(sessionId),
-        ]);
-        if (selectedSessionIdRef.current !== sessionId) {
-          return;
+        // 刷新同样隔离：任一失败不得抹掉另一侧已成功数据
+        try {
+          const detail = await getM1Session(sessionId);
+          if (selectedSessionIdRef.current === sessionId) {
+            setSessionDetail(detail);
+          }
+        } catch (refreshError) {
+          if (selectedSessionIdRef.current === sessionId && !isAbortError(refreshError)) {
+            setSessionError(describeM1ApiError(refreshError as M1ApiError));
+          }
         }
-        setSessionDetail(detail);
-        setRuns(runsPayload.runs);
-        setCurrentRunId(runsPayload.current_run_id);
+        try {
+          const runsPayload = await listM1Runs(sessionId);
+          if (selectedSessionIdRef.current === sessionId) {
+            setRuns(runsPayload.runs);
+            setCurrentRunId(runsPayload.current_run_id);
+          }
+        } catch (refreshError) {
+          if (selectedSessionIdRef.current === sessionId && !isAbortError(refreshError)) {
+            setRunsError(describeM1ApiError(refreshError as M1ApiError));
+          }
+        }
       }
     } catch (error) {
       if (isAbortError(error)) {

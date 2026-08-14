@@ -316,4 +316,256 @@ describe('M1Workspace UI', () => {
       expect(screen.getByTestId('m1-provenance-panel')).toHaveTextContent('bbbbbbbbbbbb');
     });
   });
+
+  it('keeps session overview usable when run list fails independently', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+          return jsonResponse(fixtureSessions);
+        }
+        if (url.endsWith('/api/m1/sessions/session-a')) {
+          return jsonResponse(makeSessionDetail('session-a'));
+        }
+        if (url.includes('/sessions/session-a/runs') && !url.includes('/runs/')) {
+          return jsonResponse(apiErrorEnvelope('internal_error', 'runs blew up'), 500);
+        }
+        if (url.includes('/channels')) {
+          return jsonResponse(makeChannels('session-a', null));
+        }
+        return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+      }),
+    );
+
+    render(<M1Workspace />);
+    await user.click(await screen.findByRole('button', {name: /session-a/}));
+
+    expect(await screen.findByTestId('m1-session-overview')).toHaveTextContent('session-a');
+    expect(await screen.findByTestId('m1-run-audit-panel')).toHaveTextContent('Run 列表失败');
+    expect(screen.queryByTestId('m1-session-overview')).not.toHaveTextContent('HTTP 500');
+  });
+
+  it('keeps run list usable when session detail fails independently', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+          return jsonResponse(fixtureSessions);
+        }
+        if (url.endsWith('/api/m1/sessions/session-a')) {
+          return jsonResponse(apiErrorEnvelope('session_not_found', 'missing'), 404);
+        }
+        if (url.includes('/sessions/session-a/runs') && !url.includes('/runs/')) {
+          return jsonResponse(makeRuns('session-a'));
+        }
+        if (url.includes('/channels')) {
+          return jsonResponse(makeChannels('session-a', null));
+        }
+        if (url.includes('/runs/run-a1')) {
+          return jsonResponse(makeRunDetail('session-a', 'run-a1'));
+        }
+        if (url.includes('/analysis')) {
+          return jsonResponse(makeBlockedAnalysis('session-a', 'run-a1'));
+        }
+        return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+      }),
+    );
+
+    render(<M1Workspace />);
+    await user.click(await screen.findByRole('button', {name: /session-a/}));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('会话详情加载失败');
+    const runAudit = await screen.findByTestId('m1-run-audit-panel');
+    expect(within(runAudit).getByRole('button', {name: /run-a1/})).toBeInTheDocument();
+  });
+
+  it('does not auto-select first run when current_run_id is absent', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+        return jsonResponse(fixtureSessions);
+      }
+      if (url.endsWith('/api/m1/sessions/session-a')) {
+        return jsonResponse({...makeSessionDetail('session-a'), current_run_id: null});
+      }
+      if (url.includes('/sessions/session-a/runs') && !url.includes('/runs/')) {
+        return jsonResponse({
+          ...makeRuns('session-a'),
+          current_run_id: null,
+        });
+      }
+      if (url.includes('/channels')) {
+        expect(url.includes('run_id=')).toBe(false);
+        return jsonResponse(makeChannels('session-a', null));
+      }
+      return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<M1Workspace />);
+    await user.click(await screen.findByRole('button', {name: /session-a/}));
+    await screen.findByTestId('m1-run-audit-panel');
+    expect(screen.queryByTestId('m1-run-detail')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('m1-quality-panel')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/analysis'))).toBe(false);
+  });
+
+  it('omits fabricated zero software_commit_sha on persist=false replay', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+        return jsonResponse(fixtureSessions);
+      }
+      if (url.endsWith('/api/m1/sessions/session-a')) {
+        return jsonResponse(makeSessionDetail('session-a'));
+      }
+      if (url.includes('/sessions/session-a/runs') && !url.includes('/runs/')) {
+        return jsonResponse(makeRuns('session-a'));
+      }
+      if (url.includes('/sessions/session-a/runs/run-a1')) {
+        return jsonResponse(makeRunDetail('session-a', 'run-a1'));
+      }
+      if (url.includes('/channels')) {
+        return jsonResponse(makeChannels('session-a', url.includes('run_id=') ? 'run-a1' : null));
+      }
+      if (url.includes('/analysis')) {
+        return jsonResponse(makeBlockedAnalysis('session-a', 'run-a1'));
+      }
+      if (url.includes('/replay') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}')) as {
+          persist?: boolean;
+          software_commit_sha?: string;
+        };
+        expect(body.persist ?? false).toBe(false);
+        expect(body.software_commit_sha === '0'.repeat(40)).toBe(false);
+        return jsonResponse(makeReplayResponse('session-a', false));
+      }
+      return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<M1Workspace />);
+    await user.click(await screen.findByRole('button', {name: /session-a/}));
+    await user.click(await screen.findByTestId('m1-replay-submit'));
+    expect(await screen.findByTestId('m1-replay-result')).toHaveTextContent('临时重放');
+  });
+
+  it('sends non-sentinel software_commit_sha for persist=true replay', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+        return jsonResponse(fixtureSessions);
+      }
+      if (url.endsWith('/api/m1/sessions/session-a')) {
+        return jsonResponse(makeSessionDetail('session-a'));
+      }
+      if (url.includes('/sessions/session-a/runs') && !url.includes('/runs/')) {
+        return jsonResponse(makeRuns('session-a'));
+      }
+      if (url.includes('/sessions/session-a/runs/run-a1')) {
+        return jsonResponse(makeRunDetail('session-a', 'run-a1'));
+      }
+      if (url.includes('/channels')) {
+        return jsonResponse(makeChannels('session-a', url.includes('run_id=') ? 'run-a1' : null));
+      }
+      if (url.includes('/analysis')) {
+        return jsonResponse(makeBlockedAnalysis('session-a', 'run-a1'));
+      }
+      if (url.includes('/replay') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}')) as {
+          persist?: boolean;
+          run_id?: string | null;
+          software_commit_sha?: string;
+        };
+        expect(body.persist).toBe(true);
+        expect(body.run_id).toBe('run-new');
+        expect(body.software_commit_sha).toMatch(/^[0-9a-f]{40}$/);
+        expect(body.software_commit_sha).not.toBe('0'.repeat(40));
+        return jsonResponse(makeReplayResponse('session-a', true));
+      }
+      return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<M1Workspace />);
+    await user.click(await screen.findByRole('button', {name: /session-a/}));
+    await screen.findByTestId('m1-replay-panel');
+    await user.click(screen.getByTestId('m1-replay-persist'));
+    await user.type(screen.getByTestId('m1-replay-run-id'), 'run-new');
+    await user.click(screen.getByTestId('m1-replay-submit'));
+    expect(await screen.findByTestId('m1-replay-result')).toHaveTextContent('已提交 Run');
+  });
+
+  it('discards stale replay result after session switch', async () => {
+    const user = userEvent.setup();
+    const replayA = deferred<Response>();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (matchUrl(url, '/api/m1/sessions') && !url.includes('/sessions/')) {
+          return jsonResponse(fixtureSessions);
+        }
+        if (url.endsWith('/api/m1/sessions/session-a')) {
+          return jsonResponse(makeSessionDetail('session-a'));
+        }
+        if (url.endsWith('/api/m1/sessions/session-b')) {
+          return jsonResponse({
+            ...makeSessionDetail('session-b'),
+            app_registered: false,
+            committed_run_count: 0,
+            current_run_id: null,
+            runs: [],
+          });
+        }
+        if (url.endsWith('/sessions/session-a/runs')) {
+          return jsonResponse(makeRuns('session-a'));
+        }
+        if (url.endsWith('/sessions/session-b/runs')) {
+          return jsonResponse({
+            api_version: 'm1-p3c-api-v1',
+            session_id: 'session-b',
+            current_run_id: null,
+            runs: [],
+          });
+        }
+        if (url.includes('/sessions/session-a/runs/run-a1')) {
+          return jsonResponse(makeRunDetail('session-a', 'run-a1'));
+        }
+        if (url.includes('/channels')) {
+          const sessionId = url.includes('session-b') ? 'session-b' : 'session-a';
+          return jsonResponse(makeChannels(sessionId, url.includes('run_id=') ? 'run-a1' : null));
+        }
+        if (url.includes('/analysis')) {
+          return jsonResponse(makeBlockedAnalysis('session-a', 'run-a1'));
+        }
+        if (url.includes('/sessions/session-a/replay') && init?.method === 'POST') {
+          return replayA.promise;
+        }
+        return jsonResponse(apiErrorEnvelope('unknown_error', 'unexpected'), 500);
+      }),
+    );
+
+    render(<M1Workspace />);
+    const list = await screen.findByTestId('m1-session-list');
+    await user.click(within(list).getByRole('button', {name: /session-a/}));
+    await screen.findByTestId('m1-replay-panel');
+    await user.click(screen.getByTestId('m1-replay-submit'));
+    await user.click(within(list).getByRole('button', {name: /session-b/}));
+    await waitFor(() => {
+      expect(screen.getByTestId('m1-session-overview')).toHaveTextContent('session-b');
+    });
+    replayA.resolve(jsonResponse(makeReplayResponse('session-a', false)));
+    await waitFor(() => {
+      expect(screen.queryByTestId('m1-replay-result')).not.toBeInTheDocument();
+    });
+  });
 });
