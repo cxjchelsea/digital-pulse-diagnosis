@@ -86,12 +86,16 @@ def test_p3c_get_endpoints_expose_committed_analysis_without_mutating(tmp_path: 
     run = client.get(f"/api/m1/sessions/{recorded.session_id}/runs/run-api-001")
     analysis = client.get(f"/api/m1/sessions/{recorded.session_id}/analysis")
     channels = client.get(f"/api/m1/sessions/{recorded.session_id}/channels?run_id=run-api-001&max_points=5")
+    # P3E 起 report 为只读可加路由；P3C 历史门禁仍验证既有路由与零突变
     report = client.get(f"/api/m1/sessions/{recorded.session_id}/report")
     openapi = client.get("/openapi.json")
 
     assert detail.status_code == runs.status_code == run.status_code == analysis.status_code == channels.status_code == 200
-    assert report.status_code == 404
-    assert "/api/m1/sessions/{session_id}/report" not in openapi.json()["paths"]
+    assert report.status_code == 200
+    assert report.json()["persisted"] is True
+    assert report.json()["report"]["objective_parameters"] is None
+    assert report.json()["report"]["decision_summary"]["final_action"] is None
+    assert "/api/m1/sessions/{session_id}/report" in openapi.json()["paths"]
     assert detail.json()["formal_parameters"] is None
     assert detail.json()["formal_parameters_allowed"] is False
     assert "synthetic_only" in analysis.json()["analysis"]["limitations"]
