@@ -21,7 +21,7 @@ P0_P1_P2_P3B_PATHS = (
     "tests/fixtures/m1_simulator",
     "src/digital_pulse/m1_sp",
     "tests/fixtures/m1_sp",
-    "src/digital_pulse/m1_app",
+    # M1-P3E 授权扩展 m1_app（报告投影/持久化）；不再把该目录当作 P3C 冻结基线
     "src/digital_pulse/m1_p2_acceptance.py",
     "src/digital_pulse/m1_p3b_acceptance.py",
     "scripts/generate_m1_p2_acceptance.py",

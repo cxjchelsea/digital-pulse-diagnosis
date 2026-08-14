@@ -31,6 +31,17 @@ from .models import (
 from .paths import SafeSessionPath
 from .persistence import AppAssetWrite, AppPersistence
 from .replay import ReplayAnalysisResult, ReplayAnalysisService, ReplaySessionSource
+from .reporting import (
+    M1_REPORT_PROJECTION_VERSION,
+    M1PreAcceptanceReportBuilder,
+    REPORT_ASSET_PRODUCER,
+    REPORT_ASSET_RELATIVE_PATH,
+    ReportProjectionInput,
+    assert_report_semantic_linkage,
+    deterministic_report_id,
+    parse_and_validate_report,
+    report_canonical_bytes,
+)
 from .sp_serialization import SP_RESULT_SCHEMA_VERSION, sp_result_assets, sp_result_document
 
 __all__ = [
@@ -59,15 +70,24 @@ __all__ = [
     "ChecksumSource",
     "LoadedAppSession",
     "M1AppError",
+    "M1PreAcceptanceReportBuilder",
+    "M1_REPORT_PROJECTION_VERSION",
+    "REPORT_ASSET_PRODUCER",
+    "REPORT_ASSET_RELATIVE_PATH",
     "RawIntegrityAssurance",
     "RegisteredChecksum",
     "ReplayAnalysisResult",
     "ReplayAnalysisService",
     "ReplaySessionSource",
+    "ReportProjectionInput",
     "SP_RESULT_SCHEMA_VERSION",
     "SafeSessionPath",
+    "assert_report_semantic_linkage",
     "compare_app_analysis",
     "create_replay_app_provenance",
+    "deterministic_report_id",
+    "parse_and_validate_report",
+    "report_canonical_bytes",
     "sp_result_assets",
     "sp_result_document",
 ]
