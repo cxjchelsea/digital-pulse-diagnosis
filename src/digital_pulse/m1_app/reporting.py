@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import re
 from typing import Any, Mapping
 
 from digital_pulse.m1_contracts import (
@@ -29,6 +30,10 @@ from .models import AppProvenance
 M1_REPORT_PROJECTION_VERSION = "m1-p3e-report-projection-v1"
 REPORT_ASSET_PRODUCER = "m1-p3e-report-projector"
 REPORT_ASSET_RELATIVE_PATH = "report.json"
+_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+_FROZEN_OBJECTIVE_PARAMETER_KEYS = frozenset(
+    {"heart_rate_bpm", "beat_count", "pulse_amplitude_raw", "valid_duration_s"}
+)
 
 # 仅识别仓库已冻结的确切 abort 完成原因；禁止子串启发式
 RECOGNIZED_ABORT_COMPLETION_REASONS = frozenset({"abort_and_release"})
@@ -248,7 +253,7 @@ def _validate_projection_input(projection_input: ReportProjectionInput) -> None:
         )
 
     fingerprint = analysis.get("semantic_fingerprint_sha256")
-    if not isinstance(fingerprint, str) or len(fingerprint) != 64:
+    if not isinstance(fingerprint, str) or not _HEX_64.fullmatch(fingerprint):
         raise M1AppError(
             "report_projection_failed",
             "Analysis semantic fingerprint is missing or invalid.",
@@ -274,10 +279,28 @@ def _validate_projection_input(projection_input: ReportProjectionInput) -> None:
             "Analysis gate boolean fields are invalid.",
             asset="analysis",
         )
-    if "app_software_commit_sha" not in provenance and "sp_processing_version" not in provenance:
+    analysis_software_sha = provenance.get("app_software_commit_sha")
+    analysis_processing_version = provenance.get("app_processing_version")
+    sp_processing_version = provenance.get("sp_processing_version")
+    if not isinstance(analysis_software_sha, str) or not isinstance(sp_processing_version, str):
         raise M1AppError(
             "report_projection_failed",
             "Analysis provenance is incomplete.",
+            asset="analysis",
+        )
+    if analysis_software_sha != projection_input.run_provenance.software_commit_sha:
+        raise M1AppError(
+            "report_projection_failed",
+            "Analysis software commit SHA does not match run provenance.",
+            asset="analysis",
+        )
+    if (
+        isinstance(analysis_processing_version, str)
+        and analysis_processing_version != projection_input.run_provenance.app_processing_version
+    ):
+        raise M1AppError(
+            "report_projection_failed",
+            "Analysis processing version does not match run provenance.",
             asset="analysis",
         )
 
@@ -421,9 +444,20 @@ def _map_objective_parameters(
             "formal_parameters must be an object or null.",
             asset="analysis",
         )
-    # 仅转发冻结 schema 键；禁止派生计算
-    allowed_keys = ("heart_rate_bpm", "beat_count", "pulse_amplitude_raw", "valid_duration_s")
-    mapped = {key: formal_parameters[key] for key in allowed_keys if key in formal_parameters}
+    # 仅转发冻结 schema 键；未知键 fail-closed，禁止派生计算
+    unknown_keys = sorted(str(key) for key in formal_parameters if key not in _FROZEN_OBJECTIVE_PARAMETER_KEYS)
+    if unknown_keys:
+        raise M1AppError(
+            "report_projection_failed",
+            "formal_parameters contains keys outside the frozen M1Report schema.",
+            asset="analysis",
+            details={"unknown_keys": unknown_keys},
+        )
+    mapped = {
+        key: formal_parameters[key]
+        for key in ("heart_rate_bpm", "beat_count", "pulse_amplitude_raw", "valid_duration_s")
+        if key in formal_parameters
+    }
     return mapped or None
 
 

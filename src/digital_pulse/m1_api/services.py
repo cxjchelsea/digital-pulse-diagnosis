@@ -157,7 +157,7 @@ class M1AnalysisQueryService:
             asset=AppAssetRole.ANALYSIS.value,
         )
         if not isinstance(analysis_payload, dict):
-            raise M1AppError("raw_asset_corrupted", "Analysis asset must be a JSON object.", asset="analysis")
+            raise M1AppError("raw_asset_corrupted", "Analysis asset must be a JSON object.", asset="report")
 
         report_asset = next((item for item in run.assets if item.role is AppAssetRole.REPORT), None)
         builder = M1PreAcceptanceReportBuilder()

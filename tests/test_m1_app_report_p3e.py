@@ -295,3 +295,94 @@ def test_unsupported_limitation_fail_closed(tmp_path: Path):
         raised = True
         assert exc.code == "report_projection_failed"
     assert raised
+
+
+def test_non_hex_fingerprint_fail_closed(tmp_path: Path):
+    recorded = _record(tmp_path, seed=4110)
+    _, analysis = _analysis_payload(tmp_path, recorded.session_id)
+    analysis = dict(analysis)
+    analysis["semantic_fingerprint_sha256"] = "z" * 64
+    loaded = AppSessionLoader(tmp_path).load(recorded.session_id, verify_runs=False)
+    try:
+        M1PreAcceptanceReportBuilder().build(
+            ReportProjectionInput(
+                session=loaded.session,
+                analysis=analysis,
+                run_id="run-bad-fp",
+                run_provenance=create_replay_app_provenance(FIXED_SHA),
+                generated_at_utc="2026-08-14T06:00:00Z",
+            )
+        )
+        raised = False
+    except M1AppError as exc:
+        raised = True
+        assert exc.code == "report_projection_failed"
+    assert raised
+
+
+def test_mismatched_analysis_run_software_sha_fail_closed(tmp_path: Path):
+    recorded = _record(tmp_path, seed=4111)
+    _, analysis = _analysis_payload(tmp_path, recorded.session_id)
+    loaded = AppSessionLoader(tmp_path).load(recorded.session_id, verify_runs=False)
+    other_sha = "b" * 40
+    try:
+        M1PreAcceptanceReportBuilder().build(
+            ReportProjectionInput(
+                session=loaded.session,
+                analysis=analysis,
+                run_id="run-sha-mismatch",
+                run_provenance=create_replay_app_provenance(other_sha),
+                generated_at_utc="2026-08-14T07:00:00Z",
+            )
+        )
+        raised = False
+    except M1AppError as exc:
+        raised = True
+        assert exc.code == "report_projection_failed"
+    assert raised
+
+
+def test_unknown_formal_parameter_keys_fail_closed(tmp_path: Path):
+    recorded = _record(tmp_path, seed=4112)
+    _, analysis = _analysis_payload(tmp_path, recorded.session_id)
+    analysis = dict(analysis)
+    analysis["gate"] = dict(analysis["gate"])
+    analysis["gate"]["analysis_allowed"] = True
+    analysis["gate"]["formal_parameters_allowed"] = True
+    analysis["formal_parameters"] = {"heart_rate_bpm": 72.0, "diagnosis_hint": "滑脉"}
+    loaded = AppSessionLoader(tmp_path).load(recorded.session_id, verify_runs=False)
+    try:
+        M1PreAcceptanceReportBuilder().build(
+            ReportProjectionInput(
+                session=loaded.session,
+                analysis=analysis,
+                run_id="run-unknown-formal",
+                run_provenance=create_replay_app_provenance(FIXED_SHA),
+                generated_at_utc="2026-08-14T08:00:00Z",
+            )
+        )
+        raised = False
+    except M1AppError as exc:
+        raised = True
+        assert exc.code == "report_projection_failed"
+    assert raised
+
+
+def test_substring_abort_reason_does_not_map_to_aborted(tmp_path: Path):
+    recorded = _record(tmp_path, "frame_loss", seed=4113)
+    _, analysis = _analysis_payload(tmp_path, recorded.session_id)
+    loaded = AppSessionLoader(tmp_path).load(recorded.session_id, verify_runs=False)
+    from dataclasses import replace
+
+    spoofed = replace(loaded.session, completed=False, completion_reason="user_abort_like_text")
+    report = M1PreAcceptanceReportBuilder().build(
+        ReportProjectionInput(
+            session=spoofed,
+            analysis=analysis,
+            run_id="run-substring-abort",
+            run_provenance=create_replay_app_provenance(FIXED_SHA),
+            generated_at_utc="2026-08-14T09:00:00Z",
+        )
+    )
+    assert report.report_status is ReportStatus.INCOMPLETE
+    assert report.decision_summary["final_action"] is None
