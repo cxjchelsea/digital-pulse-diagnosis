@@ -29,6 +29,7 @@ def test_run_m1_p3_acceptance_smoke_with_stub_regression_flags():
         p2_canonical_golden_matched=True,
         d3_tag_unchanged=True,
         p3d_web_source_unchanged=True,
+        web_evidence_mode="embedded",
         web_tests_passed=True,
         web_build_passed=True,
         d3_regression_passed=True,
@@ -37,8 +38,6 @@ def test_run_m1_p3_acceptance_smoke_with_stub_regression_flags():
         m1_p3b_regression_passed=True,
         m1_p3c_regression_passed=True,
         m1_p3e_regression_passed=True,
-        p3a_source_checksums_verified=True,
-        p3a_persistence_atomicity_verified=True,
     )
     assert result["acceptance_version"] == ACCEPTANCE_VERSION
     assert result["p3f_stage_version"] == P3F_STAGE_VERSION
@@ -51,6 +50,13 @@ def test_run_m1_p3_acceptance_smoke_with_stub_regression_flags():
     assert result["failed_gates"] == []
     assert result["semantic_golden"]["matched"] is True
     assert result["semantic_golden"]["digest_version"] == SEMANTIC_SUMMARY_VERSION
+    assert result["web_evidence_mode"] == "embedded"
+    assert result["performance"]["comparison_status"] == "NOT_COMPARABLE"
+    assert "no_order_of_magnitude_regression" not in result["gates"]
+    assert result["p3e_nested_role"] == "http_report_behavioral_subset"
+    assert result["gates"]["p3a_concurrency_verified"]["evidence"].get("overlapping_writers") is True
+    retry_ids = result["runtime_attempt_identities"]["retry_improves"]
+    assert len({row["session_id"] for row in retry_ids}) == 2
 
 
 def test_committed_golden_is_from_p3e_baseline():

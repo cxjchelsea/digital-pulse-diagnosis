@@ -226,8 +226,8 @@ jobs:
 
       - name: Run M1-P3 aggregate acceptance
         env:
-          # Web 证据由本 job 既有 P3E 生成器与独立 web job 提供；聚合层不再重复 npm
-          M1_P3_ASSUME_WEB_PASSED: "true"
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python scripts/generate_m1_p3_acceptance.py --skip-web
 
       - name: Assert M1-P3 aggregate acceptance
@@ -245,7 +245,17 @@ jobs:
           assert d.get('scenario_registry', {}).get('single_attempt_count') == 16;
           assert d.get('scenario_registry', {}).get('multi_attempt_count') == 2;
           assert d.get('scenario_registry', {}).get('total_attempt_count') == 21;
-          assert d.get('semantic_golden', {}).get('matched') is True"
+          assert d.get('semantic_golden', {}).get('matched') is True;
+          assert d.get('web_evidence_mode') == 'external_required';
+          assert d.get('web_regression_passed') is False;
+          assert d.get('web_evidence', {}).get('mode') == 'external_required';
+          assert d.get('web_evidence', {}).get('embedded') is False;
+          assert d.get('exact_source_head', {}).get('verified') is True;
+          assert d.get('exact_source_head', {}).get('actual_head_sha') == expected_sha;
+          assert d.get('baseline_provenance', {}).get('verified') is True;
+          assert d.get('performance', {}).get('comparison_status') == 'NOT_COMPARABLE';
+          assert 'no_order_of_magnitude_regression' not in (d.get('gates') or {});
+          assert d.get('p3e_nested_role') == 'http_report_behavioral_subset'"
 
       - name: Upload M1-P3 aggregate acceptance artifact
         uses: actions/upload-artifact@v4
@@ -280,3 +290,14 @@ jobs:
           # 与 checkout ref 对齐：PR 用 head.sha，push 用 github.sha；避免合成 merge SHA
           VITE_M1_SOFTWARE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: npm run build
+
+  p3f_conclusion:
+    name: M1-P3F whole-workflow conclusion
+    runs-on: ubuntu-latest
+    needs: [python, web]
+    if: always()
+    steps:
+      - name: Require Python and Web jobs
+        run: |
+          test "${{ needs.python.result }}" = "success"
+          test "${{ needs.web.result }}" = "success"

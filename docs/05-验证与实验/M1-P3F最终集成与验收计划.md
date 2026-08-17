@@ -43,12 +43,20 @@ P3A 持久化 + P3B 重放/投影/门控 + P3C API + P3D Web + P3E 冻结 M1Repo
 路径：`tests/fixtures/m1_app/p3_golden.json`
 
 - `golden_source_sha` = P3E 合并 SHA `2f4f88cc69fbdfb1e129d347025695334542eb9e`
-- 在基线生产管线上生成，禁止用 P3F HEAD 自批准
+- 生成器必须核对实际 `git rev-parse HEAD` 等于该基线；git 不可用则失败关闭
+- 禁止用 P3F HEAD 自批准，也禁止只把常量写入 `golden_source_sha`
 - 不含波形、软件 SHA、时间戳、路径
+
+## Web 证据
+
+Python 聚合产物在 `--skip-web` 时记录 `web_evidence.mode=external_required`，不得声称 `web_regression_passed=true`。
+正式工作流结论依赖 Python job 与独立 Web job 同时成功。
 
 ## 性能
 
 记录 8s@250Hz 与 60s@250Hz 的 raw/SP/APP/report/E2E/内存，以及 `max_points<=5000` 的显示下采样。
+
+环境不可比时 `comparison_status=NOT_COMPARABLE`，只证明 `performance_evidence_recorded`，不把“未比较”写成“无数量级回归”。
 
 这是软件表征，不是实时硬件性能或临床时延。
 
