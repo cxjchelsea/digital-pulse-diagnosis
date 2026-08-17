@@ -12,6 +12,12 @@ from digital_pulse.m1_app import AppAssetRole, AppSessionLoader, M1AppError, Rep
 from digital_pulse.m1_app.checksums import verify_asset_ref
 from digital_pulse.m1_app.manifest import loads_strict_json
 from digital_pulse.m1_app.paths import SafeSessionPath, resolve_session_root
+from digital_pulse.m1_app.reporting import (
+    M1PreAcceptanceReportBuilder,
+    ReportProjectionInput,
+    assert_report_semantic_linkage,
+    parse_and_validate_report,
+)
 from digital_pulse.m1_simulator.artifacts import ArtifactError
 from digital_pulse.m1_simulator.paths import validate_artifact_identifier
 from digital_pulse.m1_simulator.replay import ReplayDataSource
@@ -20,6 +26,7 @@ from .models import (
     AnalysisResponse,
     ChannelSeries,
     ChannelsResponse,
+    ReportResponse,
     RunDetail,
     RunSummary,
     RunsResponse,
@@ -128,6 +135,78 @@ class M1AnalysisQueryService:
         if not isinstance(payload, dict):
             raise M1AppError("raw_asset_corrupted", "Analysis asset must be a JSON object.", asset="analysis")
         return AnalysisResponse(api_version=M1_API_VERSION, session_id=session_id, run_id=selected_run_id, analysis=payload)
+
+    def report(self, session_id: str, *, run_id: str | None = None) -> ReportResponse:
+        """只读报告查询：零写入；无 current_run 时禁止猜测 runs[0]。"""
+
+        loaded = self._loader.load(session_id, verify_runs=True)
+        selected_run_id = run_id or loaded.app_manifest.current_run_id
+        if selected_run_id is None:
+            raise M1AppError("report_not_available", "No current run is available for report projection.", asset="report")
+        _validate_run_id(selected_run_id)
+        run = self._find_run(loaded.app_manifest.runs, selected_run_id)
+
+        analysis_asset = next((item for item in run.assets if item.role is AppAssetRole.ANALYSIS), None)
+        if analysis_asset is None:
+            raise M1AppError("report_not_available", "Committed run has no analysis asset for report.", asset="report")
+
+        safe_paths = SafeSessionPath(loaded.session_root)
+        analysis_path = verify_asset_ref(safe_paths, analysis_asset)
+        analysis_payload = loads_strict_json(
+            analysis_path.read_text(encoding="utf-8"),
+            asset=AppAssetRole.ANALYSIS.value,
+        )
+        if not isinstance(analysis_payload, dict):
+            raise M1AppError("raw_asset_corrupted", "Analysis asset must be a JSON object.", asset="report")
+
+        report_asset = next((item for item in run.assets if item.role is AppAssetRole.REPORT), None)
+        builder = M1PreAcceptanceReportBuilder()
+
+        if report_asset is None:
+            # 遗留已提交 run：内存投影，零突变
+            projected = builder.build(
+                ReportProjectionInput(
+                    session=loaded.session,
+                    analysis=analysis_payload,
+                    run_id=selected_run_id,
+                    run_provenance=run.provenance,
+                    generated_at_utc=run.committed_at_utc,
+                )
+            )
+            return ReportResponse(
+                api_version=M1_API_VERSION,
+                session_id=session_id,
+                run_id=selected_run_id,
+                persisted=False,
+                report=projected.to_dict(),
+            )
+
+        report_path = verify_asset_ref(safe_paths, report_asset)
+        try:
+            report_text = report_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise M1AppError("raw_asset_corrupted", "Report asset is unreadable.", asset="report") from exc
+        report_payload = loads_strict_json(report_text, asset=AppAssetRole.REPORT.value)
+        if not isinstance(report_payload, dict):
+            raise M1AppError("raw_asset_corrupted", "Report asset must be a JSON object.", asset="report")
+        persisted_report = parse_and_validate_report(report_payload)
+        expected = builder.build(
+            ReportProjectionInput(
+                session=loaded.session,
+                analysis=analysis_payload,
+                run_id=selected_run_id,
+                run_provenance=run.provenance,
+                generated_at_utc=persisted_report.generated_at_utc,
+            )
+        )
+        assert_report_semantic_linkage(persisted=persisted_report, expected=expected)
+        return ReportResponse(
+            api_version=M1_API_VERSION,
+            session_id=session_id,
+            run_id=selected_run_id,
+            persisted=True,
+            report=persisted_report.to_dict(),
+        )
 
     def replay(self, session_id: str, *, software_commit_sha: str, persist: bool, run_id: str | None):
         if run_id is not None:

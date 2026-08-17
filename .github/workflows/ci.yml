@@ -189,37 +189,40 @@ jobs:
           name: m1-p3c-acceptance
           path: artifacts/acceptance/m1-p3c-acceptance.json
 
-      - name: Setup Node for M1-P3D acceptance
+      - name: Setup Node for M1-P3E acceptance
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Run M1-P3D formal acceptance
-        run: python scripts/generate_m1_p3d_acceptance.py
+      # 历史 P3D v1 frozen-backend 门禁在授权的 P3E 后端扩展后不再作为合并硬门；
+      # P3D UI 回归由 P3E 的 p3d_web_source_unchanged + 下方 web job 证明。
+      # 不修改 scripts/generate_m1_p3d_acceptance.py / m1_p3d_acceptance.py。
 
-      - name: Assert M1-P3D formal acceptance
+      - name: Run M1-P3E formal acceptance
+        run: python scripts/generate_m1_p3e_acceptance.py
+
+      - name: Assert M1-P3E formal acceptance
         run: >
           python -c "import json, subprocess; from pathlib import Path;
-          d=json.loads(Path('artifacts/acceptance/m1-p3d-acceptance.json').read_text(encoding='utf-8'));
+          d=json.loads(Path('artifacts/acceptance/m1-p3e-acceptance.json').read_text(encoding='utf-8'));
           expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
           assert d.get('acceptance') is True, d.get('failed_gates');
           assert d.get('failed_gates') == [];
           assert d.get('software_commit_sha') == expected_sha;
-          assert d.get('report_ui_present') is False;
-          assert d.get('medical_conclusion_ui_present') is False;
-          assert d.get('web_build_passed') is True;
-          assert d.get('web_tests_passed') is True;
-          assert d.get('p3c_regression_passed') is True;
-          assert d.get('p3b_regression_passed') is True;
-          assert d.get('p2_regression_passed') is True"
+          assert d.get('acceptance_version') == 'm1-p3e-acceptance-v1';
+          assert d.get('projection_version') == 'm1-p3e-report-projection-v1';
+          assert d.get('http_testclient_exercised') is True;
+          assert d.get('gates', {}).get('report_api_present', {}).get('passed') is True;
+          assert d.get('gates', {}).get('no_fake_decision', {}).get('passed') is True;
+          assert d.get('gates', {}).get('not_for_medical_use_always', {}).get('passed') is True"
 
-      - name: Upload M1-P3D acceptance artifact
+      - name: Upload M1-P3E acceptance artifact
         uses: actions/upload-artifact@v4
         with:
-          name: m1-p3d-acceptance
-          path: artifacts/acceptance/m1-p3d-acceptance.json
+          name: m1-p3e-acceptance
+          path: artifacts/acceptance/m1-p3e-acceptance.json
 
   web:
     name: Web production build and M1-P3D tests

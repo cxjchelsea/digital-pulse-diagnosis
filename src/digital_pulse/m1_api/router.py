@@ -33,6 +33,10 @@ def create_m1_router(root: Path) -> APIRouter:
     def analysis(session_id: str, run_id: str | None = None):
         return service.analysis(session_id, run_id=run_id)
 
+    @router.get("/sessions/{session_id}/report")
+    def report(session_id: str, run_id: str | None = None):
+        return service.report(session_id, run_id=run_id)
+
     @router.get("/sessions/{session_id}/runs")
     def runs(session_id: str):
         return service.runs(session_id)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from digital_pulse.m1_contracts import utc_now_iso
 from digital_pulse.m1_simulator.artifacts import ArtifactError
 from digital_pulse.m1_simulator.replay import ReplayDataSource
 from digital_pulse.m1_sp import SPProcessingProvenance, SPProcessor
@@ -16,6 +17,14 @@ from .loader import AppSessionLoader, LoadedAppSession
 from .manifest import canonical_json_bytes
 from .models import APP_PROCESSING_VERSION_P3B, AppAssetRole, AppExecutionMode, AppProvenance
 from .persistence import AppAssetWrite, AppPersistence
+from .reporting import (
+    M1_REPORT_PROJECTION_VERSION,
+    M1PreAcceptanceReportBuilder,
+    REPORT_ASSET_PRODUCER,
+    REPORT_ASSET_RELATIVE_PATH,
+    ReportProjectionInput,
+    report_canonical_bytes,
+)
 from .sp_serialization import sp_result_assets
 
 
@@ -98,11 +107,22 @@ class ReplayAnalysisService:
 
         if persist:
             assert run_id is not None
+            # 报告生成时间在原子提交前显式捕获，不藏在 builder 内部
+            generated_at_utc = utc_now_iso()
+            report = M1PreAcceptanceReportBuilder().build(
+                ReportProjectionInput(
+                    session=source.session,
+                    analysis=analysis.to_dict(),
+                    run_id=run_id,
+                    run_provenance=app_provenance,
+                    generated_at_utc=generated_at_utc,
+                )
+            )
             self._persistence.commit_run(
                 session_id,
                 run_id,
                 provenance=app_provenance,
-                assets=_replay_assets(sp_result, analysis),
+                assets=_replay_assets(sp_result, analysis, report_bytes=report_canonical_bytes(report)),
                 allowed_execution_modes=frozenset({AppExecutionMode.REPLAY}),
             )
         return ReplayAnalysisResult(
@@ -114,7 +134,12 @@ class ReplayAnalysisService:
         )
 
 
-def _replay_assets(sp_result: SPProcessingResult, analysis: AppAnalysis) -> tuple[AppAssetWrite, ...]:
+def _replay_assets(
+    sp_result: SPProcessingResult,
+    analysis: AppAnalysis,
+    *,
+    report_bytes: bytes,
+) -> tuple[AppAssetWrite, ...]:
     return (
         *sp_result_assets(sp_result),
         AppAssetWrite(
@@ -124,5 +149,13 @@ def _replay_assets(sp_result: SPProcessingResult, analysis: AppAnalysis) -> tupl
             media_type="application/json",
             producer="m1-p3b-analysis-projector",
             version=APP_PROCESSING_VERSION_P3B,
+        ),
+        AppAssetWrite(
+            role=AppAssetRole.REPORT,
+            relative_path=REPORT_ASSET_RELATIVE_PATH,
+            content=report_bytes,
+            media_type="application/json",
+            producer=REPORT_ASSET_PRODUCER,
+            version=M1_REPORT_PROJECTION_VERSION,
         ),
     )

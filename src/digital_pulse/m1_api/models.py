@@ -70,6 +70,13 @@ class AnalysisResponse(ApiEnvelope):
     analysis: dict[str, Any]
 
 
+class ReportResponse(ApiEnvelope):
+    session_id: str
+    run_id: str
+    persisted: bool
+    report: dict[str, Any]
+
+
 class RunSummary(BaseModel):
     run_id: str
     state: str

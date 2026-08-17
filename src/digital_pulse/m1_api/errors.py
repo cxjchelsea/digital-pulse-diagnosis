@@ -12,6 +12,7 @@ _APP_ERROR_MAP: dict[str, tuple[int, str]] = {
     "symlink_escape": (400, "invalid_session_id"),
     "session_not_found": (404, "session_not_found"),
     "raw_asset_missing": (404, "analysis_not_available"),
+    "report_not_available": (404, "report_not_available"),
     "manifest_invalid": (422, "invalid_manifest"),
     "raw_asset_corrupted": (422, "artifact_corrupted"),
     "asset_unreadable": (422, "artifact_corrupted"),
@@ -19,6 +20,8 @@ _APP_ERROR_MAP: dict[str, tuple[int, str]] = {
     "replay_failed": (422, "replay_failed"),
     "sp_processing_failed": (500, "sp_processing_failed"),
     "persistence_failed": (500, "replay_failed"),
+    "report_projection_failed": (422, "artifact_corrupted"),
+    "report_semantic_linkage_mismatch": (422, "report_semantic_linkage_mismatch"),
 }
 
 
@@ -45,9 +48,11 @@ def app_error_to_http(exc: M1AppError) -> HTTPException:
         "session_not_found": "Session not found.",
         "run_not_found": "Run not found.",
         "analysis_not_available": "Analysis is not available.",
+        "report_not_available": "Report is not available.",
         "invalid_manifest": "Session manifest is invalid.",
         "artifact_corrupted": "Registered artifact is corrupted.",
         "semantic_linkage_mismatch": "Registered analysis does not match its SP result.",
+        "report_semantic_linkage_mismatch": "Persisted report does not match committed analysis projection.",
         "artifact_conflict": "Artifact conflict.",
         "replay_failed": "Replay failed.",
         "sp_processing_failed": "SP processing failed.",
