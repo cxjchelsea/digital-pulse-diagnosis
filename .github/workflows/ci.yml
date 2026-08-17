@@ -224,6 +224,35 @@ jobs:
           name: m1-p3e-acceptance
           path: artifacts/acceptance/m1-p3e-acceptance.json
 
+      - name: Run M1-P3 aggregate acceptance
+        env:
+          # Web 证据由本 job 既有 P3E 生成器与独立 web job 提供；聚合层不再重复 npm
+          M1_P3_ASSUME_WEB_PASSED: "true"
+        run: python scripts/generate_m1_p3_acceptance.py --skip-web
+
+      - name: Assert M1-P3 aggregate acceptance
+        run: >
+          python -c "import json, subprocess; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p3-acceptance.json').read_text(encoding='utf-8'));
+          expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('software_commit_sha') == expected_sha;
+          assert d.get('acceptance_version') == 'm1-p3-acceptance-v1';
+          assert d.get('p3f_stage_version') == '0.6.0-p3f';
+          assert d.get('baseline_sha') == '2f4f88cc69fbdfb1e129d347025695334542eb9e';
+          assert d.get('production_versions', {}).get('app_analysis_processing_version') == '0.2.0-p3b';
+          assert d.get('scenario_registry', {}).get('single_attempt_count') == 16;
+          assert d.get('scenario_registry', {}).get('multi_attempt_count') == 2;
+          assert d.get('scenario_registry', {}).get('total_attempt_count') == 21;
+          assert d.get('semantic_golden', {}).get('matched') is True"
+
+      - name: Upload M1-P3 aggregate acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-p3-acceptance
+          path: artifacts/acceptance/m1-p3-acceptance.json
+
   web:
     name: Web production build and M1-P3D tests
     runs-on: ubuntu-latest
