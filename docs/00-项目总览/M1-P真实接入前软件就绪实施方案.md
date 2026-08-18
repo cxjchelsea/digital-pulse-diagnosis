@@ -2,6 +2,8 @@
 
 版本：0.2.4；状态：M1-P0/M1-P1已完成；M1-P2A/P2B/P2C已完成；P2D已实现、待独立Final Review，M1-P2整体尚未收口。
 
+> **M1-P4 标注（不改写上文历史状态句）：** 自 `main@fffbf43070d5dcbb4ba748e9ae57e70509f8bac3` 起，M1-P0–P3 已 COMPLETE_MERGED。M1-P4 架构冻结见《M1-P4 INT-I1-pre规则决策引擎实施方案》与《M1 INT-I1-pre架构与规则语义设计》。下文 M1-P5 表中的 `good` / `incomplete_data` / `sensor_saturation` 以及“重采用尽 → stop 或 manual_review”为 **HISTORICAL DESIGN BASELINE / SUPERSEDED**；I1-pre 使用现行 `QualityLabel`，弱信号耗尽动作为 `reposition`。
+
 ## 1. 定位
 
 M1-P是M1“真实数据闭环”内部的真实硬件接入前工作包。
@@ -230,6 +232,8 @@ M1-P阶段禁止生成`frozen_h1`参数。
 
 ## M1-P4：INT-I1-pre规则决策引擎
 
+> 详细冻结语义已迁移至《M1 INT-I1-pre架构与规则语义设计》。下列条目仍是必须实现项；优先级中的“实验目标/效率”不得覆盖安全与完整性。`max_retry_count` 的权威 runtime 值是 **2**（P0 示例 3 不是策略）。
+
 ### 动作
 
 - `accept`；
@@ -261,6 +265,8 @@ M1-P阶段禁止生成`frozen_h1`参数。
 - 安全和完整性失败不能被质量分数覆盖。
 
 ## M1-P5：模拟场景与验收矩阵
+
+下列对照表为历史设计基线。质量名与部分 INT 预期已被 M1-P4 架构冻结文件取代，实施 P5 时不得把本表当作现行枚举真理。
 
 | 场景 | SP预期 | INT预期 | APP预期 |
 |---|---|---|---|
