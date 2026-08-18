@@ -1,0 +1,779 @@
+{
+  "acceptance_only": true,
+  "cases": [
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": null,
+      "quality_reason_codes": [],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "aborted",
+      "scenario_id": "abort",
+      "session_completed": false,
+      "session_completion_reason": "abort_and_release",
+      "sp_processing_status": "blocked_before_quality"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "unstable_baseline",
+      "quality_reason_codes": [
+        "unstable_baseline"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "baseline_drift",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": null,
+      "quality_reason_codes": [],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "incomplete",
+      "scenario_id": "device_fault",
+      "session_completed": false,
+      "session_completion_reason": "device_fault",
+      "sp_processing_status": "blocked_before_quality"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "data_integrity_failure",
+      "quality_reason_codes": [
+        "sequence_gaps"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "incomplete",
+      "scenario_id": "frame_loss",
+      "session_completed": false,
+      "session_completion_reason": "integrity_failure",
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "insufficient_duration",
+      "quality_reason_codes": [
+        "too_short"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "insufficient_duration",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "saturated",
+      "quality_reason_codes": [
+        "lower_saturation"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "lower_saturation",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "motion_artifact",
+      "quality_reason_codes": [
+        "motion_artifact"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "motion_artifact",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "no_contact",
+      "quality_reason_codes": [
+        "near_constant",
+        "no_contact"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "no_contact",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": true,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "acceptable",
+      "quality_reason_codes": [],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": true,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "complete",
+      "scenario_id": "normal_high_quality",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "reference_mismatch",
+      "quality_reason_codes": [
+        "reference_mismatch"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "ppg_misalignment",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "data_integrity_failure",
+      "quality_reason_codes": [
+        "persistence_failed"
+      ],
+      "raw_persistence_status": "failed",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "incomplete",
+      "scenario_id": "raw_persistence_failure",
+      "session_completed": false,
+      "session_completion_reason": "integrity_failure",
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "weak_signal",
+      "quality_reason_codes": [
+        "weak_amplitude"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "retry_improves",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": true,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 2,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "acceptable",
+      "quality_reason_codes": [],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": true,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "complete",
+      "scenario_id": "retry_improves",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "weak_signal",
+      "quality_reason_codes": [
+        "weak_amplitude"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "retry_still_fails",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 2,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "weak_signal",
+      "quality_reason_codes": [
+        "weak_amplitude"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "retry_still_fails",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 3,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "weak_signal",
+      "quality_reason_codes": [
+        "weak_amplitude"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "retry_still_fails",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "data_integrity_failure",
+      "quality_reason_codes": [
+        "sensor_disconnected"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "incomplete",
+      "scenario_id": "sensor_disconnection",
+      "session_completed": false,
+      "session_completion_reason": "device_fault",
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "data_integrity_failure",
+      "quality_reason_codes": [
+        "timestamp_errors"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "incomplete",
+      "scenario_id": "timestamp_regression",
+      "session_completed": false,
+      "session_completion_reason": "integrity_failure",
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "manual_review_required",
+      "quality_reason_codes": [
+        "manual_review_requested"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "manual_review_required",
+      "scenario_id": "unstable_load",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "saturated",
+      "quality_reason_codes": [
+        "upper_saturation"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "upper_saturation",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    },
+    {
+      "analysis_allowed": false,
+      "app_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input",
+        "synthetic_only"
+      ],
+      "attempt_index": 1,
+      "formal_parameters_allowed": false,
+      "formal_parameters_is_null": true,
+      "not_for_medical_use": true,
+      "parameter_status": "pending_h1_calibration",
+      "quality_label": "weak_signal",
+      "quality_reason_codes": [
+        "weak_amplitude"
+      ],
+      "raw_persistence_status": "ok",
+      "report_analysis_allowed": false,
+      "report_decision_action": null,
+      "report_decision_ids": [],
+      "report_decision_rule_version": null,
+      "report_limitations": [
+        "not_for_medical_use",
+        "not_hardware_validated",
+        "pending_h1_calibration",
+        "synthetic_input"
+      ],
+      "report_objective_parameters_present": false,
+      "report_reason_codes": [],
+      "report_status": "failed",
+      "scenario_id": "weak_signal",
+      "session_completed": true,
+      "session_completion_reason": null,
+      "sp_processing_status": "quality_evaluated"
+    }
+  ],
+  "digest_sha256": "fd76868bb6bd80700ed38d6ef63bf0e0d1e18c6af68e83b1737d41ba7a73997f",
+  "digest_version": "p3-acceptance-semantic-summary:v1",
+  "golden_source_sha": "2f4f88cc69fbdfb1e129d347025695334542eb9e",
+  "note": "ACCEPTANCE-ONLY digest; not app-analysis-fingerprint:v1 and not a production report fingerprint."
+}
