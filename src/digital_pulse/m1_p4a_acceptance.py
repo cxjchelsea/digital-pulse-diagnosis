@@ -50,7 +50,33 @@ SP_VERSION = "0.4.0-p2d"
 
 
 def _git(*args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=ROOT, text=True, encoding="utf-8").strip()
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if completed.returncode != 0:
+        raise subprocess.CalledProcessError(
+            completed.returncode,
+            completed.args,
+            completed.stdout,
+            completed.stderr,
+        )
+    return completed.stdout.strip()
+
+
+def _d3_tag_unchanged() -> bool:
+    """浅克隆可能没有标签名；失败关闭为 False，不把 git 异常冒成验收崩溃。"""
+
+    try:
+        d3_object = _git("rev-parse", "d3-v1.0.0")
+        d3_target = _git("rev-parse", "d3-v1.0.0^{commit}")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+    return d3_object == EXPECTED_D3_TAG_OBJECT and d3_target == EXPECTED_D3_TAG_TARGET
 
 
 def _context(**overrides: Any) -> DecisionContext:
@@ -288,9 +314,7 @@ def run_m1_p4a_acceptance(
     p2_ok = p2_ok and p2_hash == EXPECTED_P2_GOLDEN
     p3_payload = json.loads((ROOT / "tests" / "fixtures" / "m1_app" / "p3_golden.json").read_text(encoding="utf-8"))
     p3_ok = p3_payload.get("golden_source_sha") == EXPECTED_P3_SOURCE and p3_payload.get("digest_sha256") == EXPECTED_P3_DIGEST
-    d3_object = _git("rev-parse", "d3-v1.0.0")
-    d3_target = _git("rev-parse", "d3-v1.0.0^{commit}")
-    d3_ok = d3_object == EXPECTED_D3_TAG_OBJECT and d3_target == EXPECTED_D3_TAG_TARGET
+    d3_ok = _d3_tag_unchanged()
     p0_ok = _paths_unchanged(
         (
             "src/digital_pulse/m1_contracts.py",
