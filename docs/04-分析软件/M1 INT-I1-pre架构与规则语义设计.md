@@ -1,6 +1,8 @@
 # M1 INT-I1-pre架构与规则语义设计
 
-版本：`0.1.0-p4-architecture`；状态：**M1-P4 架构冻结候选（文档-only，尚未实现）**。
+版本：`0.1.1-p4-architecture`；状态：**M1-P4 架构 Final Review 冻结（文档-only，尚未实现）**。
+
+规范性冲突时，以 **§25 Final Review 冻结补全** 为准。
 
 Baseline：`main@fffbf43070d5dcbb4ba748e9ae57e70509f8bac3`（PR #40 / M1-P3F actual merge SHA）。
 
@@ -144,15 +146,20 @@ P3 不可变输入永不被改写。
 - `watchdog_timeout`
 - `operator_stop`（普通操作者终止，与 emergency 分离）
 
-权威来源：会话/事件中的 safety flags、`completion_reason`、设备安全层事实。模拟器当前区分：
+权威来源必须是**已持久化**的会话/末样本事实，禁止读取 `scenario_id` 或模拟器 `DeviceFaultKind` 作为规则选择器。
 
-| 场景 | 权威区分事实 | I1 动作 |
-|---|---|---|
-| `abort` | `emergency_stop` 且终端态 `SAFE_HOLD` | `abort_and_release` |
-| `device_fault` | 权威 `device_fault=true`（`DeviceFaultKind.DEVICE_FAULT` 或其会话投影），即使 `device_state==FAULT` | `abort_and_release` |
-| `sensor_disconnection` | `sensor_connection_failure=true` 且 **无** `emergency_stop`/`device_fault`；即使 `device_state==FAULT` | `stop` |
+生产鉴别器（I1-pre 冻结）：
 
-**禁止** `device_state==FAULT → abort`。那会把普通传感器断线工作流失败误升级为安全 abort。
+1. `safety.emergency_stop` = 终端 `fault_flags` 含 `emergency_stop`，或 `completion_reason == abort_and_release`
+2. `safety.hard_overload` / `host_timeout` / `watchdog_timeout` = 对应终端 flags。I1-pre 下这三者**一律** `abort_and_release`，不再留“策略可选”
+3. `integrity.sensor_connection_failure` = 终端 flags 含 `sensor_disconnected`，且无第 1/2 项
+4. `safety.device_fault` = `completion_reason == device_fault` **且** 终端 `device_state == FAULT` **且** 无第 1 项 **且** 终端 flags **不含** `sensor_disconnected`
+
+因此：P1 的 `sensor_disconnection` 与 `device_fault` 都可以有 `completion_reason=device_fault` 且 `device_state=FAULT`。二者的可持久化差别是 **`sensor_disconnected` flag 是否存在**。禁止用 `DeviceFaultKind` 猜测。
+
+若 `device_state` 已知但 flags/`completion_reason` 缺失或损坏：属于 **invalid_input**，不得发出 `M1Decision`，不得默认 `accept`，也不得仅因低质量推断 abort。
+
+**禁止** `device_state==FAULT → abort`。
 
 ### 6.3 Integrity facts
 
@@ -207,6 +214,8 @@ P3 不可变输入永不被改写。
 | device fault + acceptable quality | `abort_and_release` |
 | retry limit + `emergency_stop` | `abort_and_release` |
 | manual-review quality + device fault | `abort_and_release` |
+| `saturated` + `hard_overload` | `abort_and_release` |
+| `acceptable` + 权威 `device_fault` | `abort_and_release` |
 
 ## 8. 动作语义
 
@@ -238,14 +247,15 @@ P3 不可变输入永不被改写。
 | 详细/输入事实 | 规范 `reason_codes`（有序列表，去重） |
 |---|---|
 | Quality `acceptable` 且更高门通过 | `quality_acceptable` |
-| Quality `weak_signal` / `LOW_PULSE_AMPLITUDE` | `weak_signal` |
-| Quality `no_contact` | `no_contact` |
-| Quality `saturated` | `saturated` |
-| Quality `unstable_baseline` | `unstable_baseline` |
-| Quality `motion_artifact` | `motion_artifact` |
-| Quality `insufficient_duration` | `insufficient_duration` |
+| Quality `weak_signal` / `LOW_PULSE_AMPLITUDE` / `weak_amplitude` | `weak_signal` |
+| Quality `no_contact` / `NO_PROBE_CONTACT` | `no_contact` |
+| Quality `saturated` / `UPPER_SATURATION` / `LOWER_SATURATION` | `saturated` |
+| Quality `unstable_baseline` / `BASELINE_DRIFT` | `unstable_baseline` |
+| Quality `motion_artifact` / `MOTION_ARTIFACT` | `motion_artifact` |
+| Quality `insufficient_duration` / `INSUFFICIENT_VALID_DURATION` | `insufficient_duration` |
 | Quality `reference_mismatch` / PPG mismatch | `reference_mismatch` |
-| Quality `manual_review_required` / unstable_load 类 | `manual_review_required` |
+| Quality `manual_review_required` / unstable_load 质量投影 | `manual_review_required` |
+| Quality `data_integrity_failure`（无 abort 安全事实） | `data_integrity_failure` → 动作 `stop`，**不是** abort |
 | 原始落盘失败、丢帧、时间戳回退、普通传感器断线 | `data_integrity_failure` |
 | 同位重采用尽 | 原质量码 + `retry_limit_reached` |
 | 普通操作者停止 | `operator_stop` |
@@ -271,6 +281,10 @@ retry_count =
 ```
 
 它**不是** `attempt_index`，除非实现证明二者在该 scope 内数值等价。
+
+**写入该次 `M1Decision.retry_count` 的值就是上述“评估前计数”，不是发出后再 +1 的值。**
+
+因此：第一次 `retry_same_position` 记录 `retry_count=0`；第二次 `retry_same_position` 记录 `retry_count=1`；第三次弱信号记录 `retry_count=2` 且 `action=reposition`。合法 `M1Decision` 中 `retry_count` 不得超过 `max_retry_count`（P0 `validate`）。禁止把发出后的 3 写入 `max_retry_count=2` 的决策。
 
 示例（`max_retry_count=2`）：
 
@@ -388,11 +402,11 @@ DecisionContext + Frozen I1PolicyConfig → DecisionEvaluation
 
 ### 15.2 `I1PolicyConfig`
 
-不可变策略，仅含规则策略值：`max_retry_count=2`，耗尽策略表版本，`rule_version`，优先级表版本。
+不可变策略，仅含规则策略值：`max_retry_count=2`，耗尽策略表版本，优先级表版本，`policy_schema_version=i1-policy-v1`。
+
+**不含** `rule_version`。`rule_version` 与 `configuration_digest` 分离，两者都进入决策溯源，禁止双重所有权。
 
 **禁止**放入 P2 信号阈值。P2 阈值仍由 SP 拥有。
-
-策略 schema 版本：`i1-policy-v1`。
 
 ### 15.3 规则版本
 
@@ -426,7 +440,7 @@ decision_id = "m1-decision-" + SHA256(canonical semantic decision input)
 
 ## 16. 并行 INT 存储（冻结布局）
 
-P3 已提交 run 不可变。P4 **不得**打开并改写 `app/runs/<run_id>/report.json`，也不得向已提交 P3 run 追加“当时就存在”的文件。
+P3 已提交 run 不可变。P4 **不得**打开并改写 `app/runs/<run_id>/report.json`，也不得向已提交 P3 run 追加“当时就存在”的文件。明确禁止改写：`report.json`，`analysis.json`，`sp/result.json`，`provenance.json`，`checksums.json`。
 
 冻结布局：
 
@@ -529,7 +543,7 @@ P4 使用既有冻结 `M1Report`，不改 schema。新投影放入 `int/reports/
 
 ## 21. Fail-closed 与未知态
 
-下列情况不得猜测决策，尤其不得默认 `accept`：
+下列情况不得猜测决策，尤其不得默认 `accept`。其中哪些发射 `M1Decision`、哪些只返回引擎错误，以 §25.3 为准：
 
 缺失 session；损坏/缺失 APP run；缺失 SP 溯源；损坏 quality reference；非法 `retry_count`；`retry_count > max_retry_count`；未知 `device_state`；非法 policy digest；rule-version 不匹配；ledger 损坏；不完整 JSONL 末行。
 
@@ -573,3 +587,207 @@ P4 使用既有冻结 `M1Report`，不改 schema。新投影放入 `int/reports/
 - 《M1-P4测试与验收计划》：测试与未来 acceptance artifact
 - 《自适应采集决策方案》：I0–I5 长期路线仍有效；其中 I1 细则与旧示例以本文为准
 - 《M1-P真实接入前软件就绪实施方案》：P4 必须实现项仍有效；P5 旧质量名表为历史基线
+
+## 25. Final Review 冻结补全（规范性）
+
+本节消解独立 Final Review 发现的实现歧义。与前文冲突时以本节为准。
+
+### 25.1 输入分层
+
+- **Tier A**：会话/设备/raw-persistence/fault_flags/`completion_reason`/`device_state`
+- **Tier B**：已提交 SP/APP 质量与 `AppAnalysis`（可缺）
+- **Tier C**：INT 历史与操作者事件
+
+无 Tier B 时仍必须能做安全/完整性决策。禁止伪造 Tier B 或 `window_id`。`scenario_id` 可作溯源，**不得**作为规则选择器。
+
+### 25.2 无完整 APP run 的决策路径
+
+`raw_persistence_failure`、`abort`、`device_fault`、严重完整性失败可以没有 committed `AppAnalysis`（P3 证明完整 APP run 数可为 0）。此时 `quality_reference=null`，不伪造 run。
+
+`input_versions.signal_processing_version` 的 schema 要求非空字符串。来源顺序：所选 APP/SP run 的权威版本 → 否则 `session.versions.signal_processing_version`（若非空）。两者皆空 → **invalid_input**，不得用源码常量或 `"unknown"` 填。会话已记录 SP 版本时，raw persistence / abort / device_fault 可在无 APP run 下发射对应 `stop`/`abort_and_release`。
+
+“会话已完成且本应存在 APP run 但 run 缺失/损坏”→ **invalid_input**，不发射 `M1Decision`。
+
+### 25.3 错误模型 vs 可决策降级
+
+P4A 内部错误（**不是** `M1Decision.reason_codes`）：
+
+`invalid_input`，`version_mismatch`，`provenance_mismatch`，`invalid_retry_state`，`unsupported_device_state`，`ledger_untrusted`
+
+这些情况下：**不发射决策**。禁止把损坏输入“fail-closed”成伪造的 `stop`/`accept`。
+
+可决策降级（发射合法 `M1Decision`）：普通完整性失败、raw persistence failed、质量失败、无接触、削顶、人工复核质量。
+
+`retry_count > max_retry_count` 作为**输入** → `invalid_retry_state`，不是 reposition。引擎不得把非法输入改写成合法决策。
+
+未知 `device_state` → `unsupported_device_state`。未知事件类型 → `ledger_untrusted`。
+
+### 25.4 RetryScope 身份与确认
+
+禁止隐藏内存计数器。
+
+事件驱动重建：
+
+- `retry_scope_started`：分配 `retry_scope_id`（`m1-retry-scope-` + SHA256(canonical start payload)）。start payload 含 `session_id` 与可选 `prior_scope_id`，不含墙钟。
+- `retry_attempt_linked`：把后续采集 `session_id` 链入当前 scope，并指向触发它的 `decision_id`。无此事件的新 session **不是**同一 scope，`retry_count` 不重置也不继承。
+- `reposition_acknowledged`：必须含 `operator_id` 或显式 workflow actor、`prior_scope_id`、`new_session_id`。由操作者/编排层写入 `decision-events.jsonl`。仅此事件开启新 scope 并重置 `retry_count`。
+- `retry_scope_closed`：`accept` / `stop` / `abort_and_release` 应用后，或 `reposition_acknowledged` 完成切换后关闭旧 scope。
+- `manual_review_resolved`：显式操作者恢复；无此事件不得自动 resume。
+
+测试中的 `retry_improves` 由测试编排写入 `retry_attempt_linked`，生产 INT 不读 plan_id。
+
+### 25.5 预算消耗
+
+只有发出的 `retry_same_position` 消耗同位预算。`manual_review` / `stop` / `abort_and_release` / `accept` / `reposition` / `no_contact→reposition` 均不消耗。
+
+规则求值使用评估前 `retry_count`；P4A 纯函数不修改历史。P4C 在成功持久化 `retry_same_position` 后于下一 attempt 的 context 中把计数显示为 +1。
+
+### 25.6 外环无限循环
+
+终端且无新输入不得自动再决策：`stop`、`abort_and_release`、`accept`（episode 完成）、等待中的 `manual_review`/`reposition`。
+
+禁止：stop/abort 后自动新 retry；manual_review 无 `manual_review_resolved` 自动 retry；reposition 无 `reposition_acknowledged` 自动新 scope retry。需要新的显式 workflow/operator 边界。
+
+### 25.7 `operator_override` 字段所有权
+
+ledger 中机器建议行：**永远** `operator_override=null`。
+
+覆盖只存在于 `decision-events.jsonl` 的 `operator_override` 事件。P0 字段只出现在**派生** EffectiveDecisionView / 报告投影，禁止回写 JSONL。不为此新建一条会抹掉原建议的 `M1Decision` 行。
+
+### 25.8 安全覆盖限制
+
+操作者**不得**把权威安全动作削弱为更弱动作：
+
+- 禁止 `abort_and_release` → `accept` / `retry_same_position` / `reposition` / `manual_review` / `stop`
+- 禁止由优先级 1–3 产生的 `stop` → `accept` / `retry_same_position` / `reposition`
+
+允许：把优先级 4–6 的建议改为 `stop` 或 `manual_review`；把 `accept` 改为 `manual_review` 或 `stop`。
+
+非法覆盖：记录 `action_rejected_by_safety`，原建议不变，有效动作仍为原建议。
+
+### 25.9 Outcome 生命周期
+
+初始所有机器 `M1Decision.outcome=null`（含 `manual_review`/`reposition`/`accept`）。不把 `awaiting_operator` 写入初始决策行。
+
+随后仅事件变迁：
+
+| 事件 | 派生 outcome |
+|---|---|
+| 刚记录建议 | `null` |
+| `awaiting_operator`（manual_review/reposition 持久化后立即追加） | `awaiting_operator` |
+| `action_applied` | `applied` |
+| `operator_override` 生效 | 原建议派生 `superseded` |
+| `action_rejected_by_safety` | `rejected_by_safety` |
+| `decision_completed` | `completed` |
+
+禁止原地改 JSONL 的 `outcome`。
+
+### 25.10 事件分类、身份、顺序
+
+冻结 `event_type`：
+
+`decision_recorded`，`operator_override`，`action_applied`，`action_rejected_by_safety`，`decision_completed`，`awaiting_operator`，`reposition_acknowledged`，`manual_review_resolved`，`retry_scope_started`，`retry_scope_closed`，`retry_attempt_linked`
+
+每条事件：
+
+- `event_seq`：该 session INT ledger 从 1 起的单调整数（锁内分配）
+- `event_id` = `m1-int-event-` + SHA256(canonical payload **不含** `event_id`，**含** `event_seq` 与语义字段，**不含**墙钟)
+
+权威顺序 = `event_seq`，不是墙钟。墙钟只作 provenance。
+
+### 25.11 多 APP run 与决策→run 链接
+
+同一 session 可有多个不可变 APP run。`M1Decision` **不**增加 `run_id`。
+
+内部 provenance（事件 `decision_recorded` 与 INT 证据，非 P0 字段）必须含：
+
+`session_id`，所选 `app_run_id`（无 run 时 `null`），`AppAnalysis` 语义指纹（无则 `null`），SP `result_sha256`/fingerprint（无则 `null`），quality_reference 或明确 null，`software_commit_sha`
+
+决策不得只按 `session_id` 绑定“最新 run”。Builder 必须显式选择 run；缺省猜测 → `provenance_mismatch`。
+
+`input_versions.signal_processing_version` 必须来自该所选 run 的 SP 溯源，不得读源码常量或 unrelated current_run。
+
+### 25.12 decision_id 构造顺序（非循环，方案 B）
+
+1. 构造 `DecisionContext`（无 `decision_id`，无输出动作）
+2. 纯函数求值 → `DecisionEvaluation`
+3. 规范 semantic payload（UTF-8，`sort_keys`，禁止 NaN/Infinity）包含：
+   - 输入：`session_id`，`app_run_id` 或 null，分析/SP 指纹或 null，quality 真理，safety/integrity facts，`retry_count`，`max_retry_count`，`retry_scope_id`，`rule_version`，`configuration_digest`，`history_fingerprint`
+   - **求值后输出**：`recommended_action`，`canonical_reason_codes`
+4. `decision_id = "m1-decision-" + SHA256(payload)`
+5. 投影 `M1Decision`（此时才填 `decision_id`）
+
+禁止 payload 含：自身 `decision_id`、含 `decision_id` 的序列化 `M1Decision`、`decided_at_utc`、路径、UUID。
+
+因 payload 含 `rule_version`/`configuration_digest` 与求值输出，规则 bug 若产生不同输出会得到不同 ID。
+
+`history_fingerprint` = SHA256(canonical：当前 `retry_scope_id` + 该 scope 内既有 `decision_id` 列表按 `event_seq` + `reposition_acknowledged` 布尔)。不含 UI 文本、路径、墙钟。
+
+### 25.13 幂等与并发
+
+锁范围：`sessions/<session_id>/int/.lock` 排他锁，覆盖 decisions、events、manifest。
+
+提交协议：
+
+1. 获锁
+2. 读入现有 ledger；中间损坏 → `ledger_untrusted`，不写
+3. 若 `decision_id` 已存在且 canonical 字节相同 → 成功幂等，不追加
+4. 若 `decision_id` 已存在但字节不同 → 确定性 conflict，不写
+5. 完整 JSON 行写入（以 `\n` 结束）后 **fsync ledger**
+6. **然后** 原子改写 manifest（tmp + fsync + rename），manifest 含文件级 sha256
+7. 释放锁
+
+ledger 比 manifest 更权威。崩溃在 5 成功、6 失败：恢复时从 ledger 重算 checksum 并重写 manifest。
+
+部分行：仅当**最后一行**无 `\n` 且尚未进入步骤 5 的提交记录时，视为未提交 staging residue，恢复可截断该残行；**中间**损坏不得跳过，整本 ledger fail-closed。
+
+并发求值同一 context：锁内第二者看到已有相同 `decision_id` 则幂等。覆盖事件与 outcome 事件同样经 `event_seq` 排序。重放读者必须在无写锁或快照校验 checksum 后读取，禁止读到半行。
+
+### 25.14 Manifest 与 checksum
+
+`int/manifest.json` 是**派生索引**，权威低于两个 JSONL。
+
+可含：schema version，rule version，policy version/digest，`software_commit_sha`，`decisions_sha256`，`events_sha256`，`last_event_seq`，`current_decision_id`（派生指针），`current_report_id`（派生），报告引用。
+
+整文件 sha256 + `last_event_seq` 即腐败检测范围。不要求密码学签名。
+
+### 25.15 决策感知报告
+
+`report_id = "m1-int-report-" + SHA256(canonical: app_run_id 或 null + P3 report 语义身份 + effective decision semantic digest + rule_version + configuration_digest)`
+
+不含墙钟/路径/随机 UUID。
+
+`decision_summary.final_action` = **有效**工作流动作（覆盖后）。`decision_ids` 必须包含原始机器 `decision_id`。覆盖后 **新建** 不可变 INT 报告，禁止改写旧 INT 报告。manifest 的 current 指针可更新。
+
+必须链接具体 P3 run/report，禁止只按 `session_id`。pre-H1 `objective_parameters` 保持 `null`。
+
+### 25.16 解释与 LLM
+
+`human_readable_explanation` 由 `matched_rule_id` + 规范 reasons + evidence_refs **确定性**生成，存放于 `DecisionEvaluation` / 事件，不进入 `M1Decision`。禁止 LLM 生成权威解释或进入求值路径。
+
+### 25.17 QualityLabel 完备路径
+
+在无更高优先级覆盖时：
+
+| QualityLabel | I1 |
+|---|---|
+| `acceptable` | `accept` |
+| `weak_signal` | retry 或耗尽 reposition |
+| `no_contact` | `reposition` |
+| `saturated` | `stop`（硬过载则 abort） |
+| `unstable_baseline` | retry 或耗尽 reposition |
+| `motion_artifact` | retry 或耗尽 reposition |
+| `insufficient_duration` | retry 或耗尽 reposition |
+| `data_integrity_failure` | `stop` |
+| `reference_mismatch` | `manual_review` |
+| `manual_review_required` | `manual_review` |
+
+无默认 `accept` 落空分支。`unstable_load` 场景只通过质量 `manual_review_required` 进入规则，不通过故障名。
+
+### 25.18 未来验收反假绿
+
+`m1-p4-acceptance.json` 必须运行生产 INT（零 oracle 依赖）后再与**外部**测试期望比较。禁止 `actual == expected_int_action` 作为唯一门。
+
+若采用 `m1-p4-decision-semantic:v1`：必须记录 golden source SHA、digest version、禁止当前任意 HEAD 自批、检测过期产物（P3F 教训）。`software_commit_sha` 绑定被测 checkout HEAD；merge 后等于 actual merge SHA。不用 synthetic merge SHA。
+
+P3 semantic golden 与 P2 canonical golden 不得再生或替换。
