@@ -1,6 +1,6 @@
 # M1 INT-I1-pre架构与规则语义设计
 
-版本：`0.1.1-p4-architecture`；状态：**M1-P4 架构 Final Review 冻结（文档-only，尚未实现）**。
+版本：`0.1.2-p4-architecture`；状态：**M1-P4 架构 Final Review 冻结（文档-only，尚未实现）**。
 
 规范性冲突时，以 **§25 Final Review 冻结补全** 为准。
 
@@ -148,18 +148,18 @@ P3 不可变输入永不被改写。
 
 权威来源必须是**已持久化**的会话/末样本事实，禁止读取 `scenario_id` 或模拟器 `DeviceFaultKind` 作为规则选择器。
 
-生产鉴别器（I1-pre 冻结）：
+生产鉴别器（I1-pre 冻结；按顺序互斥，只选第一条成立的项）：
 
 1. `safety.emergency_stop` = 终端 `fault_flags` 含 `emergency_stop`，或 `completion_reason == abort_and_release`
 2. `safety.hard_overload` / `host_timeout` / `watchdog_timeout` = 对应终端 flags。I1-pre 下这三者**一律** `abort_and_release`，不再留“策略可选”
 3. `integrity.sensor_connection_failure` = 终端 flags 含 `sensor_disconnected`，且无第 1/2 项
-4. `safety.device_fault` = `completion_reason == device_fault` **且** 终端 `device_state == FAULT` **且** 无第 1 项 **且** 终端 flags **不含** `sensor_disconnected`
+4. `safety.device_fault` = 无第 1 项 **且** 终端 flags **不含** `sensor_disconnected` **且** 终端 `device_state == FAULT` **且**（`completion_reason == device_fault` **或** 终端 flags 含权威设备故障旗标 `buffer_overflow`）
 
-因此：P1 的 `sensor_disconnection` 与 `device_fault` 都可以有 `completion_reason=device_fault` 且 `device_state=FAULT`。二者的可持久化差别是 **`sensor_disconnected` flag 是否存在**。禁止用 `DeviceFaultKind` 猜测。
+因此：P1 的 `sensor_disconnection` 与 `device_fault` 都可以有 `completion_reason=device_fault` 且 `device_state=FAULT`。二者的可持久化差别是 **`sensor_disconnected` flag 是否存在**。禁止用 `DeviceFaultKind` 猜测。禁止只用 `device_state==FAULT` 推断 abort。
 
-若 `device_state` 已知但 flags/`completion_reason` 缺失或损坏：属于 **invalid_input**，不得发出 `M1Decision`，不得默认 `accept`，也不得仅因低质量推断 abort。
+5. **未分类安全态（不得落入质量/`accept`）**：终端 `device_state ∈ {FAULT, SAFE_HOLD}`，且第 1–4 项均不成立 → **`unsupported_device_state` / `invalid_input`，不发射 `M1Decision`**。包括：`SAFE_HOLD` 但无 `emergency_stop` 旗标且 `completion_reason` 不是 `abort_and_release`；`FAULT` 但既无 `sensor_disconnected`、也无 `device_fault`/`buffer_overflow` 权威分类。不得默认 `accept`，不得因质量可接受而继续，也不得把未分类 FAULT/SAFE_HOLD 猜成 abort。
 
-**禁止** `device_state==FAULT → abort`。
+若 `device_state` 已知但 flags/`completion_reason` 缺失或损坏：同样属于 **invalid_input**，不得发出 `M1Decision`。
 
 ### 6.3 Integrity facts
 
@@ -181,7 +181,9 @@ P3 不可变输入永不被改写。
 
 ### 6.5 History facts
 
-最低：`prior_decision_count`，`prior_retry_same_position_count`，当前 `retry_count`，`max_retry_count`，`prior_actions`，最近 outcome（若有），`reposition_acknowledged`，当前 retry scope 是否已切换。
+最低：`retry_scope_id`，`prior_decision_count`，`prior_retry_same_position_count`，当前 `retry_count`，`max_retry_count`，`prior_actions`，最近 outcome（若有），`reposition_acknowledged`，当前 retry scope 是否已切换。
+
+`retry_scope_id` 必须进入 `DecisionContext` 与 `decision_id` payload；禁止只靠进程内可变计数器。
 
 禁止从 scenario 名称推断 retry 状态。
 
@@ -206,16 +208,18 @@ P3 不可变输入永不被改写。
 | 条件 | 动作 |
 |---|---|
 | quality acceptable + `emergency_stop` | `abort_and_release` |
+| quality acceptable + 权威 `device_fault` | `abort_and_release` |
 | quality acceptable + raw persistence failed | `stop` |
+| quality acceptable + 普通 `operator_stop` | `stop` |
 | weak signal + `emergency_stop` | `abort_and_release` |
+| weak signal + 权威 `device_fault` | `abort_and_release` |
 | weak signal + retry limit reached | `reposition` |
 | reference mismatch + retry budget available | `manual_review` |
-| `operator_stop` + acceptable quality | `stop` |
-| device fault + acceptable quality | `abort_and_release` |
 | retry limit + `emergency_stop` | `abort_and_release` |
 | manual-review quality + device fault | `abort_and_release` |
 | `saturated` + `hard_overload` | `abort_and_release` |
-| `acceptable` + 权威 `device_fault` | `abort_and_release` |
+| `FAULT` + `sensor_disconnected`（无紧急/过载旗标） | `stop`（不得 abort） |
+| `FAULT`/`SAFE_HOLD` 且 1–4 鉴别器均不成立 | **不发射决策**（`unsupported_device_state`） |
 
 ## 8. 动作语义
 
@@ -543,14 +547,14 @@ P4 使用既有冻结 `M1Report`，不改 schema。新投影放入 `int/reports/
 
 ## 21. Fail-closed 与未知态
 
-下列情况不得猜测决策，尤其不得默认 `accept`。其中哪些发射 `M1Decision`、哪些只返回引擎错误，以 §25.3 为准：
+下列情况不得猜测决策，尤其不得默认 `accept`。其中哪些发射 `M1Decision`、哪些只返回引擎错误，以 **§25.3 / §25.19** 为准；本节不得把损坏输入“fail-closed”成伪造的 `stop`。
 
-缺失 session；损坏/缺失 APP run；缺失 SP 溯源；损坏 quality reference；非法 `retry_count`；`retry_count > max_retry_count`；未知 `device_state`；非法 policy digest；rule-version 不匹配；ledger 损坏；不完整 JSONL 末行。
+缺失 session；损坏/缺失本应存在的 APP run；缺失 SP 溯源；损坏 quality reference；非法 `retry_count`；`retry_count > max_retry_count`；未知或未分类的 `FAULT`/`SAFE_HOLD`；非法 policy digest；rule-version 不匹配；ledger 损坏；不完整 JSONL 末行 → **不发射决策**。
 
-若真理不足且无显式安全 abort：
+可决策降级（仅当输入可信任）且无更高优先级覆盖时：
 
-- 会话存在但质量/完整性不足以继续自动化 → **`manual_review`**
-- 会话明显不完整且属普通采集失败 → **`stop`**
+- 权威质量为 `manual_review_required` / `reference_mismatch` → **`manual_review`**
+- 权威普通完整性/采集失败（含 raw persistence failed、丢帧、普通断线）→ **`stop`**
 
 永不因缺省而 `accept`。
 
@@ -604,7 +608,7 @@ P4 使用既有冻结 `M1Report`，不改 schema。新投影放入 `int/reports/
 
 `raw_persistence_failure`、`abort`、`device_fault`、严重完整性失败可以没有 committed `AppAnalysis`（P3 证明完整 APP run 数可为 0）。此时 `quality_reference=null`，不伪造 run。
 
-`input_versions.signal_processing_version` 的 schema 要求非空字符串。来源顺序：所选 APP/SP run 的权威版本 → 否则 `session.versions.signal_processing_version`（若非空）。两者皆空 → **invalid_input**，不得用源码常量或 `"unknown"` 填。会话已记录 SP 版本时，raw persistence / abort / device_fault 可在无 APP run 下发射对应 `stop`/`abort_and_release`。
+`input_versions.signal_processing_version` 的 schema 要求非空字符串。权威来源见 §25.22。两者皆空 → **invalid_input**，不得用源码常量或 `"unknown"` 填。会话已记录 SP 版本时，raw persistence / abort / device_fault 可在无 APP run 下发射对应 `stop`/`abort_and_release`。
 
 “会话已完成且本应存在 APP run 但 run 缺失/损坏”→ **invalid_input**，不发射 `M1Decision`。
 
@@ -629,10 +633,17 @@ P4A 内部错误（**不是** `M1Decision.reason_codes`）：
 事件驱动重建：
 
 - `retry_scope_started`：分配 `retry_scope_id`（`m1-retry-scope-` + SHA256(canonical start payload)）。start payload 含 `session_id` 与可选 `prior_scope_id`，不含墙钟。
-- `retry_attempt_linked`：把后续采集 `session_id` 链入当前 scope，并指向触发它的 `decision_id`。无此事件的新 session **不是**同一 scope，`retry_count` 不重置也不继承。
-- `reposition_acknowledged`：必须含 `operator_id` 或显式 workflow actor、`prior_scope_id`、`new_session_id`。由操作者/编排层写入 `decision-events.jsonl`。仅此事件开启新 scope 并重置 `retry_count`。
-- `retry_scope_closed`：`accept` / `stop` / `abort_and_release` 应用后，或 `reposition_acknowledged` 完成切换后关闭旧 scope。
-- `manual_review_resolved`：显式操作者恢复；无此事件不得自动 resume。
+- `retry_attempt_linked`：把后续采集 `session_id` 链入当前 scope，并指向触发它的 `decision_id`。
+- `reposition_acknowledged`：必须含 `operator_id` 或显式 workflow actor、`prior_scope_id`、`new_session_id`。由操作者/编排层写入 `decision-events.jsonl`。仅此事件开启新 scope 并重置 `retry_count`。规则引擎与自动编排**不得**自行写该事件。
+- `retry_scope_closed`：`accept` / `stop` / `abort_and_release` 应用后，或 `reposition_acknowledged` 完成切换后关闭旧 scope。关闭开放 scope 以开始无关新 episode，必须先有显式 workflow/operator 边界写入本事件；**不得**因出现另一个 `session_id` 而暗示关闭。
+- `manual_review_resolved`：见 §25.20。无此事件不得自动 resume。
+
+开放 scope 下，对新 `session_id` 的处理（互斥，禁止猜测）：
+
+1. 存在指向该 session 的 `retry_attempt_linked` → 同一 scope，继承评估前 `retry_count`
+2. `reposition_acknowledged.new_session_id` 等于该 session → 新 scope，`retry_count=0`
+3. 无开放 scope → P4C 必须先写 `retry_scope_started`；`retry_count=0`
+4. 存在开放 scope，且该 session 既未 linked、也不是 acknowledgement 的新 session → **`invalid_retry_state`，不发射决策**。既不继承，也不重置。
 
 测试中的 `retry_improves` 由测试编排写入 `retry_attempt_linked`，生产 INT 不读 plan_id。
 
@@ -647,6 +658,8 @@ P4A 内部错误（**不是** `M1Decision.reason_codes`）：
 终端且无新输入不得自动再决策：`stop`、`abort_and_release`、`accept`（episode 完成）、等待中的 `manual_review`/`reposition`。
 
 禁止：stop/abort 后自动新 retry；manual_review 无 `manual_review_resolved` 自动 retry；reposition 无 `reposition_acknowledged` 自动新 scope retry。需要新的显式 workflow/operator 边界。
+
+I1-pre **不**定义 `max_reposition_count`。操作者可重复确认换位；这是操作者门控循环，不是自动外环。自动编排监视质量后自行写 `reposition_acknowledged` = 违规。
 
 ### 25.7 `operator_override` 字段所有权
 
@@ -705,7 +718,7 @@ ledger 中机器建议行：**永远** `operator_override=null`。
 
 决策不得只按 `session_id` 绑定“最新 run”。Builder 必须显式选择 run；缺省猜测 → `provenance_mismatch`。
 
-`input_versions.signal_processing_version` 必须来自该所选 run 的 SP 溯源，不得读源码常量或 unrelated current_run。
+`input_versions.signal_processing_version` 必须按 §25.22 取自所选 run 或（无 run 时）会话版本，不得读源码常量或 unrelated current_run。
 
 ### 25.12 decision_id 构造顺序（非循环，方案 B）
 
@@ -791,3 +804,55 @@ ledger 比 manifest 更权威。崩溃在 5 成功、6 失败：恢复时从 led
 若采用 `m1-p4-decision-semantic:v1`：必须记录 golden source SHA、digest version、禁止当前任意 HEAD 自批、检测过期产物（P3F 教训）。`software_commit_sha` 绑定被测 checkout HEAD；merge 后等于 actual merge SHA。不用 synthetic merge SHA。
 
 P3 semantic golden 与 P2 canonical golden 不得再生或替换。
+
+### 25.19 未分类 FAULT / SAFE_HOLD
+
+`device_state` 为 `FAULT` 或 `SAFE_HOLD` 时，必须先走 §6.2 鉴别器 1–4。
+
+若无一成立：`unsupported_device_state`，**不发射** `M1Decision`。禁止落入质量规则，禁止 `accept`，禁止把“看起来像故障”猜成 `abort_and_release`。
+
+`SAFE_HOLD` + `emergency_stop` 旗标（P1 `abort` 场景）由鉴别器 1 覆盖，动作为 `abort_and_release` / `emergency_stop`。不得把单独的 `SAFE_HOLD` 写成预留动作 `hold`。
+
+### 25.20 `manual_review_resolved` 恢复语义
+
+事件必含：`operator_id`，`source_decision_id`，`resolution`。
+
+冻结 `resolution`：
+
+| `resolution` | 含义 |
+|---|---|
+| `remain_awaiting` | 继续暂停；派生 outcome 仍为 `awaiting_operator` |
+| `terminate_stop` | 工作流终止为 `stop`；追加 outcome 事件；**不**改写原 `M1Decision.action` |
+| `continue_new_acquisition` | 允许后续新采集；**不**把当前陈旧质量重评成 `accept` / `retry_same_position` |
+
+禁止第四种“把当前质量直接 accept”的 resolution。§25.8 也不允许把 `manual_review` 覆盖成 `accept`。
+
+对**同一** `DecisionContext` 再次求值：仍必须得到 `manual_review`（幂等），不得因已有 resolved 事件就改动作。
+
+`continue_new_acquisition` 之后，必须出现新的 session 与 `retry_attempt_linked` 或新的 `retry_scope_started`，再对**新** Tier A/B 事实求值。到达 `accept` 的唯一合法路径是新的已提交质量独立满足 accept 门。
+
+无 `manual_review_resolved`：禁止自动 resume、自动 retry、自动 accept。
+
+### 25.21 投影字段（I1-pre 写入值）
+
+不改 P0 schema。I1-pre 投影固定：
+
+- `milestone` = `M1`
+- `int_level` = `I1`
+- `parameter_status` = `DecisionContext` 会话事实中的 `parameter_status`；缺失 → `invalid_input`
+- I1-pre 不得为了“解锁正式参数”而写入 `frozen` / `candidate`
+- `schema_version` = `1.0.0`
+- `configuration_digest` = `I1PolicyConfig` 的 64 位小写 hex SHA-256；**禁止** `null`、全零、`"unknown"`
+- `rule_version` = `i1-pre-0.1.0` 且等于 `input_versions.decision_rule_version`
+
+### 25.22 SP 版本权威来源
+
+- `app_run_id` 非空：`signal_processing_version` **必须**等于该 run 的 SP provenance 版本。若 `session.versions.signal_processing_version` 也非空且与 run 不一致 → `provenance_mismatch`，不发射决策。
+- `app_run_id` 为空（合法 Tier A-only 路径）：使用非空的 `session.versions.signal_processing_version`；为空 → `invalid_input`。
+- 禁止读取源码常量、`latest` SP 版本或 unrelated `current_run`。
+
+### 25.23 `buffer_overflow` 与设备故障
+
+P1 `device_fault` 场景终端 flags 含 `buffer_overflow`。该旗标是权威设备故障证据，进入 §6.2 鉴别器 4，动作为 `abort_and_release` / `device_fault`。它不是普通完整性 `stop`，也不是 `sensor_disconnected`。
+
+`host_timeout` / `watchdog_timeout` / `hard_overload` 只由对应终端 flags 触发，I1-pre 一律 abort。

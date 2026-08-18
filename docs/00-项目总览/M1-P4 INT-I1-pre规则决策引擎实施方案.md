@@ -1,6 +1,6 @@
 # M1-P4 INT-I1-pre规则决策引擎实施方案
 
-版本：`0.1.1-p4-plan`；状态：**Final Review 文档修复后的规划冻结（文档-only）**。
+版本：`0.1.2-p4-plan`；状态：**Final Review 文档修复后的规划冻结（文档-only）**。
 
 Baseline：`main@fffbf43070d5dcbb4ba748e9ae57e70509f8bac3`。
 
@@ -133,14 +133,13 @@ P2 canonical golden 与 P3 semantic golden、D3 tag 保持不变。
 
 本 Draft PR 完成后必须停止。
 
-下一闸门需单独授权：
-
-```text
-M1-P4 Architecture Plan — Final Review
-```
-
-审查应攻击：优先级、retry 离一误差、oracle 泄漏、reason 错配、完整性 vs 安全 abort、device_fault vs 断线、operator stop vs emergency、覆盖历史、outcome mutation、decision_id 非确定性、P3 历史改写、JSONL 崩溃/并发、报告覆盖风险。
+Final Review 规范性补全见架构文档 §25（含 §25.19–§25.23 的未分类安全态、manual_review 恢复、投影字段、SP 版本来源）。
 
 在架构计划自身完成 Final Review → Ready → Merge Gate → exact-main closeout 之前，**不得实现 P4A**。
 
-Final Review 规范性补全见架构文档 §25。
+下一闸门需单独授权：
+
+```text
+PR #41 — M1-P4 Architecture Plan
+Metadata Sync + Ready Transition
+```
