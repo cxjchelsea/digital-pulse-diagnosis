@@ -76,6 +76,25 @@ class FinalReviewFailClosedTests(unittest.TestCase):
             self._eval(make_context(analysis_allowed=False))
         self.assertEqual(raised.exception.code, "invalid_input")
 
+    def test_missing_or_blank_completion_reason_fails_closed(self) -> None:
+        for completion_reason in (None, "", "   "):
+            with self.subTest(completion_reason=completion_reason):
+                with self.assertRaises(M1IntError) as raised:
+                    self._eval(make_context(completion_reason=completion_reason))
+                self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_incomplete_session_is_integrity_stop_before_quality(self) -> None:
+        context = make_context(
+            completed=False,
+            completion_reason="incomplete",
+            quality_label=QualityLabel.ACCEPTABLE,
+            analysis_allowed=True,
+        )
+        evaluation = self._eval(context)
+        self.assertEqual(evaluation.recommended_action, DecisionAction.STOP)
+        self.assertEqual(list(evaluation.canonical_reason_codes), ["data_integrity_failure"])
+        self.assertEqual(evaluation.matched_rule_id, "integrity.session_incomplete")
+
     def test_retry_history_must_match_retry_count(self) -> None:
         with self.assertRaises(M1IntError) as raised:
             self._eval(
@@ -160,6 +179,47 @@ class FinalReviewFailClosedTests(unittest.TestCase):
             failed_y, self._eval(failed_y), self.policy, decided_at_utc=POLICY_DECIDED_AT_A
         )
         self.assertNotEqual(id_x.decision_id, id_y.decision_id)
+
+    def test_completion_truth_changes_decision_id_even_when_output_matches(self) -> None:
+        emergency_a = early_failure_context(
+            emergency_stop=True,
+            completion_reason="complete",
+            device_state="SAFE_HOLD",
+        )
+        emergency_b = early_failure_context(
+            emergency_stop=True,
+            completion_reason="abort_and_release",
+            device_state="SAFE_HOLD",
+        )
+        decision_a = project_m1_decision(
+            emergency_a, self._eval(emergency_a), self.policy, decided_at_utc=POLICY_DECIDED_AT_A
+        )
+        decision_b = project_m1_decision(
+            emergency_b, self._eval(emergency_b), self.policy, decided_at_utc=POLICY_DECIDED_AT_A
+        )
+        self.assertEqual(decision_a.action, decision_b.action)
+        self.assertEqual(decision_a.reason_codes, decision_b.reason_codes)
+        self.assertNotEqual(decision_a.decision_id, decision_b.decision_id)
+
+        raw_complete = early_failure_context(
+            completed=True,
+            completion_reason="raw_persistence_failure",
+            raw_persistence_status=RawPersistenceStatus.FAILED,
+        )
+        raw_incomplete = early_failure_context(
+            completed=False,
+            completion_reason="raw_persistence_failure",
+            raw_persistence_status=RawPersistenceStatus.FAILED,
+        )
+        complete_decision = project_m1_decision(
+            raw_complete, self._eval(raw_complete), self.policy, decided_at_utc=POLICY_DECIDED_AT_A
+        )
+        incomplete_decision = project_m1_decision(
+            raw_incomplete, self._eval(raw_incomplete), self.policy, decided_at_utc=POLICY_DECIDED_AT_A
+        )
+        self.assertEqual(complete_decision.action, incomplete_decision.action)
+        self.assertEqual(complete_decision.reason_codes, incomplete_decision.reason_codes)
+        self.assertNotEqual(complete_decision.decision_id, incomplete_decision.decision_id)
 
     def test_non_frozen_policy_is_rejected_by_projection(self) -> None:
         context = make_context()
