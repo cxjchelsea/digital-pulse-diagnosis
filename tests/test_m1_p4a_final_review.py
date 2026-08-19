@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 from digital_pulse.m1_contracts import DecisionAction, ParameterStatus, QualityLabel, RawPersistenceStatus
@@ -67,6 +68,26 @@ class FinalReviewFailClosedTests(unittest.TestCase):
                 emergency, forged, self.policy, decided_at_utc=POLICY_DECIDED_AT_A
             )
         self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_projection_rejects_forged_evaluation_metadata(self) -> None:
+        context = make_context()
+        evaluation = self._eval(context)
+        mutations = (
+            {"rule_priority": evaluation.rule_priority + 1},
+            {"evidence_refs": evaluation.evidence_refs + ("forged:evidence",)},
+            {"human_readable_explanation": evaluation.human_readable_explanation + "|forged"},
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                forged = replace(evaluation, **mutation)
+                with self.assertRaises(M1IntError) as raised:
+                    project_m1_decision(
+                        context,
+                        forged,
+                        self.policy,
+                        decided_at_utc=POLICY_DECIDED_AT_A,
+                    )
+                self.assertEqual(raised.exception.code, "invalid_input")
 
     def test_acceptable_requires_analysis_allowed_true(self) -> None:
         with self.assertRaises(M1IntError) as raised:
