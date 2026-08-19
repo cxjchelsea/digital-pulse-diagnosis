@@ -88,3 +88,12 @@ P4A 实现纯确定性 I1 规则核心：
 - D3 tag object `da85aee746453e92b0029ae6ec4f51fefc769e4e` / target `d0251b3741d99bab955fa288c57424abd301b0b1`
 
 P4A `acceptance=true` 不等于 M1-P4 完成，也不勾选 Issue #29 M1-P4。
+
+## Final Review 补强（实现层，不改冻结架构语义）
+
+- `project_m1_decision` 独立重跑 `I1RuleEngine.evaluate`，拒绝交叉 context / 伪造 Evaluation。
+- `ACCEPT` 要求 `analysis_allowed is True`。
+- `retry_count` 必须等于当前 HistoryFacts 中 `retry_same_position` 次数；非法 prior action / decision_id 失败关闭。
+- 未知 `device_state` → `unsupported_device_state`；`device_fault`/`buffer_overflow` 与非 `FAULT` 矛盾 → `invalid_input`。
+- Scheme B payload 绑定 `parameter_status`、权威 SP 版本与 `analysis_allowed`。
+- 正式验收顶层 `*_verified` 字段从 `gates` 派生，禁止硬编码 `True`。

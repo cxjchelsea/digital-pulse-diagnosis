@@ -87,6 +87,9 @@ def _context(**overrides: Any) -> DecisionContext:
     quality_reference = None
     if quality_label is not None and window_id is not None:
         quality_reference = QualityReference(session_id=session_id, window_id=window_id)
+    retry_count = overrides.pop("retry_count", 0)
+    prior_actions = tuple("retry_same_position" for _ in range(retry_count))
+    prior_decision_ids = tuple(f"m1-decision-{'a' * 62}{index:02x}" for index in range(retry_count))
     defaults = {
         "session": SessionFacts(
             session_id=session_id,
@@ -117,10 +120,10 @@ def _context(**overrides: Any) -> DecisionContext:
         ),
         "history": HistoryFacts(
             retry_scope_id=overrides.pop("retry_scope_id", "retry-scope-001"),
-            retry_count=overrides.pop("retry_count", 0),
+            retry_count=retry_count,
             max_retry_count=2,
-            prior_decision_ids=(),
-            prior_actions=(),
+            prior_decision_ids=prior_decision_ids,
+            prior_actions=prior_actions,
             reposition_acknowledged=False,
         ),
         "operator": OperatorFacts(operator_stop=overrides.pop("operator_stop", False)),
@@ -159,24 +162,56 @@ def _scan_oracle_and_persistence() -> tuple[bool, bool, bool]:
     medical_ok = True
     forbidden_prefix = "digital_pulse.m1_simulator"
     medical_terms = ("诊断", "疾病", "证型", "治疗", "临床", "diagnosis", "disease", "syndrome", "treatment")
+    persistence_snippets = (
+        "decisions.jsonl",
+        "decision-events.jsonl",
+        "int/manifest.json",
+        "int/reports/",
+        "os.fsync",
+        "fcntl",
+        "msvcrt",
+        ".write_text(",
+        ".write_bytes(",
+        "Path.write_text",
+        "tempfile",
+        "shutil.copy",
+    )
+    oracle_snippets = (
+        "expected_int_action",
+        "expected_quality_label",
+        "expected.json",
+        "scenario.json",
+        "scenario_id",
+    )
     for path in PKG.glob("*.py"):
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(path))
         for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == forbidden_prefix or alias.name.startswith(forbidden_prefix + "."):
+                        oracle_ok = False
             if isinstance(node, ast.ImportFrom) and node.module:
                 if node.module == forbidden_prefix or node.module.startswith(forbidden_prefix + "."):
                     oracle_ok = False
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "open":
-                persistence_ok = False
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id == "open":
+                    persistence_ok = False
+                if isinstance(func, ast.Attribute) and func.attr in {"write_text", "write_bytes", "import_module"}:
+                    if func.attr == "import_module":
+                        oracle_ok = False
+                    else:
+                        persistence_ok = False
         lowered = source.lower()
         if any(term.lower() in lowered for term in medical_terms):
             medical_ok = False
-        for snippet in ("decisions.jsonl", "decision-events.jsonl", "expected_int_action"):
+        for snippet in persistence_snippets:
             if snippet in source:
-                if snippet == "expected_int_action":
-                    oracle_ok = False
-                else:
-                    persistence_ok = False
+                persistence_ok = False
+        for snippet in oracle_snippets:
+            if snippet in source:
+                oracle_ok = False
     return oracle_ok, persistence_ok, medical_ok
 
 
@@ -250,6 +285,17 @@ def run_m1_p4a_acceptance(
         "reposition",
         ["weak_signal", "retry_limit_reached"],
     )
+    for exhausted_label in (
+        QualityLabel.UNSTABLE_BASELINE,
+        QualityLabel.MOTION_ARTIFACT,
+        QualityLabel.INSUFFICIENT_DURATION,
+    ):
+        record(
+            f"retry.2.{exhausted_label.value}",
+            _context(quality_label=exhausted_label, retry_count=2),
+            "reposition",
+            [exhausted_label.value, "retry_limit_reached"],
+        )
     record(
         "sensor.disconnect",
         _early(device_state="FAULT", completion_reason="device_fault", sensor_connection_failure=True),
@@ -284,11 +330,84 @@ def run_m1_p4a_acceptance(
         except M1IntError as error:
             unclassified_ok = unclassified_ok and error.code == "unsupported_device_state"
 
-    missing_app_ok = False
-    try:
-        engine.evaluate(_context(app_run_id=None, run_signal_processing_version=None), policy)
-    except M1IntError as error:
-        missing_app_ok = error.code in {"provenance_mismatch", "invalid_input"}
+    def _fail_closed(context: DecisionContext, expected_code: str) -> bool:
+        try:
+            engine.evaluate(context, policy)
+        except M1IntError as error:
+            return error.code == expected_code
+        return False
+
+    sensor_stop = engine.evaluate(
+        _early(device_state="FAULT", completion_reason="device_fault", sensor_connection_failure=True),
+        policy,
+    )
+    buffer_abort = engine.evaluate(_early(device_state="FAULT", buffer_overflow=True), policy)
+    classified_abort = engine.evaluate(
+        _early(device_state="FAULT", completion_reason="device_fault", device_fault=True),
+        policy,
+    )
+    fault_ok = (
+        unclassified_ok
+        and sensor_stop.recommended_action.value == "stop"
+        and list(sensor_stop.canonical_reason_codes) == ["data_integrity_failure"]
+        and buffer_abort.recommended_action.value == "abort_and_release"
+        and classified_abort.recommended_action.value == "abort_and_release"
+    )
+
+    safety_conflicts = [
+        (
+            _context(quality_label=QualityLabel.ACCEPTABLE, emergency_stop=True),
+            "abort_and_release",
+            ["emergency_stop"],
+        ),
+        (
+            _early(device_state="FAULT", completion_reason="device_fault", device_fault=True, quality_label=QualityLabel.WEAK_SIGNAL, window_id="window-0001", analysis_allowed=True, app_run_id="run-p4a-001"),
+            "abort_and_release",
+            ["device_fault"],
+        ),
+        (
+            _context(quality_label=QualityLabel.ACCEPTABLE, operator_stop=True, emergency_stop=True),
+            "abort_and_release",
+            ["emergency_stop"],
+        ),
+        (
+            _early(raw_persistence_status=RawPersistenceStatus.FAILED, emergency_stop=True, completion_reason="abort_and_release", device_state="SAFE_HOLD"),
+            "abort_and_release",
+            ["emergency_stop"],
+        ),
+        (
+            _early(device_state="FAULT", sensor_connection_failure=True, hard_overload=True),
+            "abort_and_release",
+            ["hard_overload"],
+        ),
+    ]
+    safety_ok = True
+    for context, expected_action, expected_reasons in safety_conflicts:
+        evaluation = engine.evaluate(context, policy)
+        safety_ok = safety_ok and evaluation.recommended_action.value == expected_action
+        safety_ok = safety_ok and list(evaluation.canonical_reason_codes) == expected_reasons
+
+    retry_exhaustion_ok = all(
+        item["passed"]
+        for item in cases
+        if item["name"] == "retry.2" or item["name"].startswith("retry.2.")
+    )
+    retry_off_by_one_ok = all(item["passed"] for item in cases if item["name"] in {"retry.0", "retry.1", "retry.2"})
+
+    missing_app_ok = _fail_closed(
+        _context(app_run_id=None, run_signal_processing_version=None),
+        "provenance_mismatch",
+    ) or _fail_closed(
+        _context(app_run_id=None, run_signal_processing_version=None),
+        "invalid_input",
+    )
+    invalid_ok = (
+        missing_app_ok
+        and _fail_closed(_context(retry_count=3), "invalid_retry_state")
+        and _fail_closed(_context(device_state="BANANA"), "unsupported_device_state")
+        and _fail_closed(_context(analysis_allowed=None), "invalid_input")
+        and _fail_closed(_context(device_fault=True, device_state="ACQUIRE"), "invalid_input")
+    )
 
     oracle_ok, persistence_ok, medical_ok = _scan_oracle_and_persistence()
     first = engine.evaluate(_context(), policy)
@@ -297,6 +416,31 @@ def run_m1_p4a_acceptance(
     clock_a = project_m1_decision(_context(), first, policy, decided_at_utc="2026-01-01T00:00:00Z")
     clock_b = project_m1_decision(_context(), first, policy, decided_at_utc="2026-06-01T12:34:56Z")
     clock_ok = clock_a.decision_id == clock_b.decision_id and clock_a.decided_at_utc != clock_b.decided_at_utc
+    bind_ok = False
+    try:
+        project_m1_decision(
+            _early(emergency_stop=True, completion_reason="abort_and_release", device_state="SAFE_HOLD"),
+            first,
+            policy,
+            decided_at_utc="2026-01-01T00:00:00Z",
+        )
+    except M1IntError as error:
+        bind_ok = error.code == "invalid_input"
+    weak_eval = engine.evaluate(_context(quality_label=QualityLabel.WEAK_SIGNAL), policy)
+    weak_decision = project_m1_decision(
+        _context(quality_label=QualityLabel.WEAK_SIGNAL),
+        weak_eval,
+        policy,
+        decided_at_utc="2026-01-01T00:00:00Z",
+    )
+    output_bind_ok = clock_a.decision_id != weak_decision.decision_id
+    decision_id_ok = (
+        clock_ok
+        and bind_ok
+        and output_bind_ok
+        and clock_a.decision_id.startswith("m1-decision-")
+        and "decision_id" not in clock_a.decision_id[len("m1-decision-") :]
+    )
 
     actual_head = _git("rev-parse", "HEAD")
     if expected_head_sha and actual_head != expected_head_sha:
@@ -328,17 +472,20 @@ def run_m1_p4a_acceptance(
     label_ok = labels == {item.value for item in QualityLabel}
 
     gates = {
-        "safety_precedence_verified": _gate("safety_precedence_verified", "abort_and_release" in actions and "emergency" in [item["name"] for item in cases]),
-        "fault_discriminator_verified": _gate("fault_discriminator_verified", unclassified_ok),
-        "retry_off_by_one_verified": _gate("retry_off_by_one_verified", all(item["passed"] for item in cases if item["name"].startswith("retry."))),
-        "retry_exhaustion_verified": _gate("retry_exhaustion_verified", next(item["passed"] for item in cases if item["name"] == "retry.2")),
+        "safety_precedence_verified": _gate("safety_precedence_verified", safety_ok),
+        "fault_discriminator_verified": _gate("fault_discriminator_verified", fault_ok),
+        "retry_off_by_one_verified": _gate("retry_off_by_one_verified", retry_off_by_one_ok),
+        "retry_exhaustion_verified": _gate("retry_exhaustion_verified", retry_exhaustion_ok),
         "oracle_isolation_verified": _gate("oracle_isolation_verified", oracle_ok),
         "determinism_verified": _gate("determinism_verified", determinism_ok),
-        "decision_id_verified": _gate("decision_id_verified", clock_ok and clock_a.decision_id.startswith("m1-decision-")),
+        "decision_id_verified": _gate("decision_id_verified", decision_id_ok),
         "schema_projection_verified": _gate("schema_projection_verified", all(item["passed"] for item in cases)),
         "early_failure_verified": _gate("early_failure_verified", next(item["passed"] for item in cases if item["name"] == "raw.failed")),
-        "invalid_input_fail_closed_verified": _gate("invalid_input_fail_closed_verified", missing_app_ok),
-        "reserved_actions_absent": _gate("reserved_actions_absent", not actions.intersection({"hold", "adjust_pressure", "continue_scan"})),
+        "invalid_input_fail_closed_verified": _gate("invalid_input_fail_closed_verified", invalid_ok),
+        "reserved_actions_absent": _gate(
+            "reserved_actions_absent",
+            not actions.intersection({"hold", "adjust_pressure", "continue_scan"}),
+        ),
         "p0_contract_unchanged": _gate("p0_contract_unchanged", p0_ok),
         "p2_golden_unchanged": _gate("p2_golden_unchanged", p2_ok),
         "p3_golden_unchanged": _gate("p3_golden_unchanged", p3_ok),
@@ -360,27 +507,27 @@ def run_m1_p4a_acceptance(
         "case_count": len(cases),
         "cases": cases,
         "configuration_digest": digest,
-        "d3_tag_unchanged": d3_ok,
-        "decision_id_verified": clock_ok,
-        "determinism_verified": determinism_ok,
-        "early_failure_verified": True,
+        "d3_tag_unchanged": gates["d3_tag_unchanged"]["passed"],
+        "decision_id_verified": gates["decision_id_verified"]["passed"],
+        "determinism_verified": gates["determinism_verified"]["passed"],
+        "early_failure_verified": gates["early_failure_verified"]["passed"],
         "failed_gates": failed,
-        "fault_discriminator_verified": unclassified_ok,
+        "fault_discriminator_verified": gates["fault_discriminator_verified"]["passed"],
         "gates": gates,
-        "invalid_input_fail_closed_verified": missing_app_ok,
+        "invalid_input_fail_closed_verified": gates["invalid_input_fail_closed_verified"]["passed"],
         "max_retry_count": 2,
-        "oracle_isolation_verified": oracle_ok,
-        "p0_contract_unchanged": p0_ok,
-        "p2_golden_unchanged": p2_ok,
-        "p3_golden_unchanged": p3_ok,
+        "oracle_isolation_verified": gates["oracle_isolation_verified"]["passed"],
+        "p0_contract_unchanged": gates["p0_contract_unchanged"]["passed"],
+        "p2_golden_unchanged": gates["p2_golden_unchanged"]["passed"],
+        "p3_golden_unchanged": gates["p3_golden_unchanged"]["passed"],
         "policy_schema_version": POLICY_SCHEMA_VERSION,
         "quality_label_coverage": sorted(labels),
-        "reserved_actions_absent": True,
-        "retry_exhaustion_verified": True,
-        "retry_off_by_one_verified": True,
+        "reserved_actions_absent": gates["reserved_actions_absent"]["passed"],
+        "retry_exhaustion_verified": gates["retry_exhaustion_verified"]["passed"],
+        "retry_off_by_one_verified": gates["retry_off_by_one_verified"]["passed"],
         "rule_version": RULE_VERSION,
-        "safety_precedence_verified": True,
-        "schema_projection_verified": all(item["passed"] for item in cases),
+        "safety_precedence_verified": gates["safety_precedence_verified"]["passed"],
+        "schema_projection_verified": gates["schema_projection_verified"]["passed"],
         "software_commit_sha": software_commit_sha,
         "stage": "M1-P4A",
     }

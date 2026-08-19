@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import re
 from typing import Any, Mapping
 
 from digital_pulse.m1_contracts import (
@@ -20,6 +21,24 @@ from .errors import M1IntError
 
 RULE_VERSION = "i1-pre-0.1.0"
 IDENTITY_SCHEMA_VERSION = "i1-decision-identity-v1"
+AUTHORIZED_DEVICE_STATES = frozenset(
+    {
+        "BOOT",
+        "SELF_TEST",
+        "IDLE",
+        "APPROACH",
+        "CONTACT",
+        "STABILIZE",
+        "ACQUIRE",
+        "STEP",
+        "RETRACT",
+        "FAULT",
+        "SAFE_HOLD",
+    }
+)
+GIT_COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+HEX64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+DECISION_ID_PATTERN = re.compile(r"^m1-decision-[0-9a-f]{64}$")
 
 
 def dumps_canonical(payload: Mapping[str, Any]) -> str:
@@ -127,6 +146,14 @@ class DecisionEvaluation:
     evidence_refs: tuple[str, ...]
     human_readable_explanation: str
     history_fingerprint: str
+
+
+def authoritative_signal_processing_version(context: DecisionContext) -> str | None:
+    """按冻结 §25.22 选择 run 或 session SP 版本；校验由规则层完成。"""
+
+    if context.provenance.app_run_id:
+        return context.provenance.run_signal_processing_version
+    return context.provenance.session_signal_processing_version
 
 
 def history_fingerprint(history: HistoryFacts) -> str:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from digital_pulse.m1_contracts import DecisionAction, DecisionInputVersions, M1Decision
+from digital_pulse.m1_contracts import DecisionAction, DecisionInputVersions, I1_ACTIONS, M1Decision, RESERVED_FUTURE_ACTIONS
 
 from .errors import M1IntError
 from .models import (
@@ -10,16 +10,15 @@ from .models import (
     RULE_VERSION,
     DecisionContext,
     DecisionEvaluation,
+    authoritative_signal_processing_version,
     sha256_canonical,
 )
-from .policy import FROZEN_MAX_RETRY_COUNT, I1PolicyConfig, policy_configuration_digest
+from .policy import FROZEN_MAX_RETRY_COUNT, I1PolicyConfig, policy_configuration_digest, require_frozen_i1_policy
+from .rules import I1RuleEngine
 
 
 def _signal_processing_version(context: DecisionContext) -> str:
-    if context.provenance.app_run_id:
-        version = context.provenance.run_signal_processing_version
-    else:
-        version = context.provenance.session_signal_processing_version
+    version = authoritative_signal_processing_version(context)
     if not version:
         raise M1IntError("invalid_input", "authoritative signal_processing_version is missing")
     return version
@@ -49,13 +48,19 @@ def build_decision_id(context: DecisionContext, evaluation: DecisionEvaluation, 
         "matched_rule_id": evaluation.matched_rule_id,
         "max_retry_count": context.history.max_retry_count,
         "operator_stop": context.operator.operator_stop,
+        "parameter_status": context.session.parameter_status.value,
         "provenance": {
             "app_analysis_fingerprint": context.provenance.app_analysis_fingerprint,
             "app_run_id": context.provenance.app_run_id,
+            "signal_processing_version": _signal_processing_version(context),
             "sp_result_fingerprint": context.provenance.sp_result_fingerprint,
         },
         "quality_label": quality_label,
         "quality_reference": quality_ref,
+        "quality_truth": {
+            "analysis_allowed": context.quality.analysis_allowed,
+            "quality_label": quality_label,
+        },
         "raw_persistence_status": context.session.raw_persistence_status.value,
         "recommended_action": evaluation.recommended_action.value,
         "retry_count": context.history.retry_count,
@@ -85,14 +90,23 @@ def project_m1_decision(
 
     if not decided_at_utc:
         raise M1IntError("invalid_input", "decided_at_utc must be supplied by caller")
-    digest = policy_configuration_digest(policy)
-    if evaluation.configuration_digest != digest:
-        raise M1IntError("version_mismatch", "evaluation configuration_digest does not match policy")
-    if evaluation.rule_version != RULE_VERSION:
-        raise M1IntError("version_mismatch", "evaluation rule_version mismatch")
-    action = evaluation.recommended_action
-    if not isinstance(action, DecisionAction):
-        action = DecisionAction(str(action))
+    require_frozen_i1_policy(policy)
+    expected = I1RuleEngine().evaluate(context, policy)
+    bound = (
+        evaluation.semantic_input_digest == expected.semantic_input_digest
+        and evaluation.history_fingerprint == expected.history_fingerprint
+        and evaluation.configuration_digest == expected.configuration_digest
+        and evaluation.rule_version == expected.rule_version
+        and evaluation.recommended_action == expected.recommended_action
+        and evaluation.canonical_reason_codes == expected.canonical_reason_codes
+        and evaluation.matched_rule_id == expected.matched_rule_id
+    )
+    if not bound:
+        raise M1IntError("invalid_input", "evaluation is not bound to this context and policy")
+    action = expected.recommended_action
+    if action.value in RESERVED_FUTURE_ACTIONS or action.value not in I1_ACTIONS:
+        raise M1IntError("invalid_input", f"I1 cannot project action {action.value}")
+    digest = expected.configuration_digest
     decision = M1Decision(
         decision_id=build_decision_id(context, evaluation, policy),
         session_id=context.session.session_id,
@@ -102,7 +116,7 @@ def project_m1_decision(
         device_state=context.session.device_state,
         quality_reference=context.quality.quality_reference,
         action=action,
-        reason_codes=evaluation.canonical_reason_codes,
+        reason_codes=expected.canonical_reason_codes,
         rule_version=RULE_VERSION,
         input_versions=DecisionInputVersions(
             signal_processing_version=_signal_processing_version(context),

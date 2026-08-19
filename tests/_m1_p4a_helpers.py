@@ -32,6 +32,16 @@ POLICY_DECIDED_AT_A = "2026-01-01T00:00:00Z"
 POLICY_DECIDED_AT_B = "2026-06-01T12:34:56Z"
 
 
+def consistent_retry_history(retry_count: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """构造与 retry_count 自洽的 prior retry_same_position 历史。"""
+
+    if retry_count <= 0:
+        return (), ()
+    prior_actions = tuple("retry_same_position" for _ in range(retry_count))
+    prior_decision_ids = tuple(f"m1-decision-{'a' * 62}{index:02x}" for index in range(retry_count))
+    return prior_actions, prior_decision_ids
+
+
 def make_context(
     *,
     session_id: str = SESSION_ID,
@@ -56,8 +66,8 @@ def make_context(
     retry_count: int = 0,
     max_retry_count: int = 2,
     retry_scope_id: str = RETRY_SCOPE_ID,
-    prior_decision_ids: tuple[str, ...] = (),
-    prior_actions: tuple[str, ...] = (),
+    prior_decision_ids: tuple[str, ...] | None = None,
+    prior_actions: tuple[str, ...] | None = None,
     reposition_acknowledged: bool = False,
     operator_stop: bool = False,
     app_run_id: str | None = APP_RUN_ID,
@@ -68,6 +78,13 @@ def make_context(
     software_commit_sha: str = SOFTWARE_SHA,
 ) -> DecisionContext:
     """构造显式结构化 DecisionContext；调用方覆盖字段以表达场景。"""
+
+    if prior_actions is None and prior_decision_ids is None:
+        prior_actions, prior_decision_ids = consistent_retry_history(retry_count)
+    elif prior_actions is None:
+        prior_actions = ()
+    elif prior_decision_ids is None:
+        prior_decision_ids = ()
 
     quality_reference = None
     if quality_label is not None and window_id is not None:

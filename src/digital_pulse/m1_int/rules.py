@@ -5,16 +5,23 @@ from __future__ import annotations
 from digital_pulse.m1_contracts import (
     DecisionAction,
     I1_ACTIONS,
+    ParameterStatus,
     QualityLabel,
     RawPersistenceStatus,
     RESERVED_FUTURE_ACTIONS,
+    SourceType,
 )
 
 from .errors import M1IntError
 from .models import (
+    AUTHORIZED_DEVICE_STATES,
+    DECISION_ID_PATTERN,
+    GIT_COMMIT_SHA_PATTERN,
+    HEX64_PATTERN,
     RULE_VERSION,
     DecisionContext,
     DecisionEvaluation,
+    authoritative_signal_processing_version,
     history_fingerprint,
     sha256_canonical,
 )
@@ -107,10 +114,12 @@ def _semantic_input_digest(context: DecisionContext, policy: I1PolicyConfig, his
         },
         "max_retry_count": context.history.max_retry_count,
         "operator_stop": context.operator.operator_stop,
+        "parameter_status": context.session.parameter_status.value,
         "policy_digest": policy_configuration_digest(policy),
         "provenance": {
             "app_analysis_fingerprint": context.provenance.app_analysis_fingerprint,
             "app_run_id": context.provenance.app_run_id,
+            "signal_processing_version": authoritative_signal_processing_version(context),
             "sp_result_fingerprint": context.provenance.sp_result_fingerprint,
         },
         "quality_label": quality_label,
@@ -132,13 +141,52 @@ def _semantic_input_digest(context: DecisionContext, policy: I1PolicyConfig, his
     return sha256_canonical(payload)
 
 
+def _require_bool(value: object, field_name: str) -> None:
+    if not isinstance(value, bool):
+        raise M1IntError("invalid_input", f"{field_name} must be a boolean")
+
+
+def _require_optional_hex64(value: str | None, field_name: str) -> None:
+    if value is None:
+        return
+    if not HEX64_PATTERN.fullmatch(value):
+        raise M1IntError("invalid_input", f"{field_name} must be 64 lowercase hex chars")
+
+
 def _validate_context(context: DecisionContext, policy: I1PolicyConfig) -> None:
+    if not isinstance(context.session.source_type, SourceType):
+        raise M1IntError("invalid_input", "source_type must be a frozen SourceType")
+    if not isinstance(context.session.parameter_status, ParameterStatus):
+        raise M1IntError("invalid_input", "parameter_status must be a frozen ParameterStatus")
+    if not isinstance(context.session.raw_persistence_status, RawPersistenceStatus):
+        raise M1IntError("invalid_input", "raw_persistence_status must be a frozen RawPersistenceStatus")
+    _require_bool(context.session.completed, "completed")
+    _require_bool(context.safety.emergency_stop, "emergency_stop")
+    _require_bool(context.safety.device_fault, "device_fault")
+    _require_bool(context.safety.hard_overload, "hard_overload")
+    _require_bool(context.safety.host_timeout, "host_timeout")
+    _require_bool(context.safety.watchdog_timeout, "watchdog_timeout")
+    _require_bool(context.safety.buffer_overflow, "buffer_overflow")
+    _require_bool(context.integrity.sensor_connection_failure, "sensor_connection_failure")
+    _require_bool(context.integrity.frame_loss, "frame_loss")
+    _require_bool(context.integrity.timestamp_regression, "timestamp_regression")
+    _require_bool(context.operator.operator_stop, "operator_stop")
+    _require_bool(context.history.reposition_acknowledged, "reposition_acknowledged")
+    if context.quality.analysis_allowed is not None:
+        _require_bool(context.quality.analysis_allowed, "analysis_allowed")
+    if context.quality.quality_label is not None and not isinstance(context.quality.quality_label, QualityLabel):
+        raise M1IntError("invalid_input", "quality_label must be a frozen QualityLabel")
+
     if not context.session.session_id.strip():
         raise M1IntError("invalid_input", "session_id is required")
-    if not context.session.device_state.strip():
-        raise M1IntError("invalid_input", "device_state is required")
-    if context.session.parameter_status is None:
-        raise M1IntError("invalid_input", "parameter_status is required")
+    if context.session.device_state not in AUTHORIZED_DEVICE_STATES:
+        raise M1IntError("unsupported_device_state", "unknown or unauthorized device_state")
+    if context.safety.device_fault or context.safety.buffer_overflow:
+        if context.session.device_state != "FAULT":
+            raise M1IntError(
+                "invalid_input",
+                "device_fault/buffer_overflow facts require device_state=FAULT",
+            )
     if not context.history.retry_scope_id.strip():
         raise M1IntError("invalid_retry_state", "retry_scope_id is required")
     if context.history.retry_count < 0:
@@ -149,15 +197,54 @@ def _validate_context(context: DecisionContext, policy: I1PolicyConfig) -> None:
         raise M1IntError("invalid_retry_state", "history.max_retry_count must match policy")
     if len(context.history.prior_decision_ids) != len(context.history.prior_actions):
         raise M1IntError("invalid_retry_state", "prior_decision_ids and prior_actions length mismatch")
+    if context.history.reposition_acknowledged and context.history.retry_count != 0:
+        raise M1IntError("invalid_retry_state", "reposition_acknowledged cannot coexist with retry_count>0")
+    retry_issued = 0
+    seen_decision_ids: set[str] = set()
+    for action, decision_id in zip(
+        context.history.prior_actions,
+        context.history.prior_decision_ids,
+        strict=True,
+    ):
+        if action not in I1_ACTIONS:
+            raise M1IntError("invalid_retry_state", f"illegal prior action {action}")
+        if action == DecisionAction.RETRY_SAME_POSITION.value:
+            retry_issued += 1
+        if not DECISION_ID_PATTERN.fullmatch(decision_id):
+            raise M1IntError("invalid_retry_state", "prior decision_id is malformed")
+        if decision_id in seen_decision_ids:
+            raise M1IntError("invalid_retry_state", "prior decision_id is duplicated")
+        seen_decision_ids.add(decision_id)
+    if retry_issued != context.history.retry_count:
+        raise M1IntError(
+            "invalid_retry_state",
+            "retry_count must equal prior retry_same_position count",
+        )
+
     reference = context.quality.quality_reference
-    if reference is not None and reference.session_id != context.session.session_id:
-        raise M1IntError("provenance_mismatch", "quality_reference.session_id must match session_id")
-    if context.quality.quality_label is QualityLabel.ACCEPTABLE and context.quality.analysis_allowed is False:
-        raise M1IntError("invalid_input", "acceptable quality cannot have analysis_allowed=false")
-    if not context.provenance.software_commit_sha.strip():
-        raise M1IntError("invalid_input", "software_commit_sha is required provenance")
-    if context.provenance.app_run_id:
-        if not context.provenance.run_signal_processing_version:
+    if reference is not None:
+        if not reference.session_id.strip() or not reference.window_id.strip():
+            raise M1IntError("invalid_input", "quality_reference identifiers must be non-empty")
+        if reference.session_id != context.session.session_id:
+            raise M1IntError("provenance_mismatch", "quality_reference.session_id must match session_id")
+    if context.quality.quality_label is not None and reference is None:
+        raise M1IntError("invalid_input", "quality_reference is required when quality_label exists")
+    if context.quality.quality_label is None and reference is not None:
+        raise M1IntError("invalid_input", "quality_label is required when quality_reference exists")
+    if context.quality.quality_label is not None and context.quality.analysis_allowed is None:
+        raise M1IntError("invalid_input", "analysis_allowed is required when quality_label exists")
+    if context.quality.quality_label is QualityLabel.ACCEPTABLE and context.quality.analysis_allowed is not True:
+        raise M1IntError("invalid_input", "ACCEPT requires analysis_allowed=True")
+
+    if not GIT_COMMIT_SHA_PATTERN.fullmatch(context.provenance.software_commit_sha):
+        raise M1IntError("invalid_input", "software_commit_sha must be 40 lowercase hex chars")
+    app_run_id = context.provenance.app_run_id
+    if app_run_id is not None and not app_run_id.strip():
+        raise M1IntError("invalid_input", "app_run_id must not be whitespace")
+    _require_optional_hex64(context.provenance.app_analysis_fingerprint, "app_analysis_fingerprint")
+    _require_optional_hex64(context.provenance.sp_result_fingerprint, "sp_result_fingerprint")
+    if app_run_id:
+        if not context.provenance.run_signal_processing_version or not context.provenance.run_signal_processing_version.strip():
             raise M1IntError("invalid_input", "run_signal_processing_version is required when app_run_id exists")
         if not context.provenance.app_analysis_fingerprint:
             raise M1IntError("invalid_input", "app_analysis_fingerprint is required when app_run_id exists")
@@ -167,7 +254,8 @@ def _validate_context(context: DecisionContext, policy: I1PolicyConfig) -> None:
         if session_version and session_version != context.provenance.run_signal_processing_version:
             raise M1IntError("provenance_mismatch", "run and session signal_processing_version conflict")
     else:
-        if not context.provenance.session_signal_processing_version:
+        session_version = context.provenance.session_signal_processing_version
+        if not session_version or not session_version.strip():
             raise M1IntError("invalid_input", "session_signal_processing_version is required when app_run_id is absent")
         if context.quality.quality_label is not None:
             raise M1IntError("provenance_mismatch", "quality path requires exact APP-run provenance")
