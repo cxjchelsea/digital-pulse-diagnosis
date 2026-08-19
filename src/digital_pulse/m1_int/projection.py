@@ -94,23 +94,14 @@ def project_m1_decision(
         raise M1IntError("invalid_input", "decided_at_utc must be supplied by caller")
     require_frozen_i1_policy(policy)
     expected = I1RuleEngine().evaluate(context, policy)
-    bound = (
-        evaluation.semantic_input_digest == expected.semantic_input_digest
-        and evaluation.history_fingerprint == expected.history_fingerprint
-        and evaluation.configuration_digest == expected.configuration_digest
-        and evaluation.rule_version == expected.rule_version
-        and evaluation.recommended_action == expected.recommended_action
-        and evaluation.canonical_reason_codes == expected.canonical_reason_codes
-        and evaluation.matched_rule_id == expected.matched_rule_id
-    )
-    if not bound:
+    if evaluation != expected:
         raise M1IntError("invalid_input", "evaluation is not bound to this context and policy")
     action = expected.recommended_action
     if action.value in RESERVED_FUTURE_ACTIONS or action.value not in I1_ACTIONS:
         raise M1IntError("invalid_input", f"I1 cannot project action {action.value}")
     digest = expected.configuration_digest
     decision = M1Decision(
-        decision_id=build_decision_id(context, evaluation, policy),
+        decision_id=build_decision_id(context, expected, policy),
         session_id=context.session.session_id,
         decided_at_utc=decided_at_utc,
         milestone="M1",
