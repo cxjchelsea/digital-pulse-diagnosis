@@ -36,6 +36,8 @@ def build_decision_id(context: DecisionContext, evaluation: DecisionEvaluation, 
         }
     payload = {
         "canonical_reason_codes": list(evaluation.canonical_reason_codes),
+        "completed": context.session.completed,
+        "completion_reason": context.session.completion_reason,
         "configuration_digest": policy_configuration_digest(policy),
         "device_state": context.session.device_state,
         "history_fingerprint": evaluation.history_fingerprint,
