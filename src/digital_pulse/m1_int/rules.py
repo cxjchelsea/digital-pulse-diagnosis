@@ -104,6 +104,7 @@ def _semantic_input_digest(context: DecisionContext, policy: I1PolicyConfig, his
         }
     payload = {
         "analysis_allowed": context.quality.analysis_allowed,
+        "completed": context.session.completed,
         "completion_reason": context.session.completion_reason,
         "device_state": context.session.device_state,
         "history_fingerprint": history_digest,
@@ -179,6 +180,9 @@ def _validate_context(context: DecisionContext, policy: I1PolicyConfig) -> None:
 
     if not context.session.session_id.strip():
         raise M1IntError("invalid_input", "session_id is required")
+    completion_reason = context.session.completion_reason
+    if not isinstance(completion_reason, str) or not completion_reason.strip():
+        raise M1IntError("invalid_input", "completion_reason must be a non-empty persisted session fact")
     if context.session.device_state not in AUTHORIZED_DEVICE_STATES:
         raise M1IntError("unsupported_device_state", "unknown or unauthorized device_state")
     if context.safety.device_fault or context.safety.buffer_overflow:
@@ -375,6 +379,13 @@ class I1RuleEngine:
             raise M1IntError(
                 "invalid_input",
                 "raw_persistence_status partial/not_started has no frozen I1-pre action mapping",
+            )
+        if not context.session.completed:
+            return emit(
+                DecisionAction.STOP,
+                _reason_tuple("data_integrity_failure"),
+                "integrity.session_incomplete",
+                3,
             )
         if context.integrity.frame_loss:
             return emit(
