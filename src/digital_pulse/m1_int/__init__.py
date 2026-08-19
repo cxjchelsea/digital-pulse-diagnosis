@@ -1,6 +1,24 @@
-"""M1-P4A 确定性 INT-I1-pre 规则核心公开 API。"""
+"""M1-P4A 规则核心与 P4B-A ledger 纯合同公开 API。"""
 
 from .errors import M1IntError
+from .ledger_models import (
+    EMPTY_LEDGER_DIGEST,
+    FROZEN_EVENT_TYPES,
+    FROZEN_OUTCOMES,
+    FROZEN_RESOLUTIONS,
+    LEDGER_MANIFEST_SCHEMA_VERSION,
+    LEDGER_SCHEMA_VERSION,
+    IntLedgerEvent,
+    IntLedgerManifest,
+    build_int_ledger_event,
+    canonical_event_bytes,
+    canonical_event_payload,
+    event_fingerprint,
+    require_frozen_outcome,
+    require_frozen_resolution,
+    require_machine_decision_record,
+    validate_int_ledger_manifest,
+)
 from .models import (
     RULE_VERSION,
     DecisionContext,
@@ -14,6 +32,7 @@ from .models import (
     SessionFacts,
     history_fingerprint,
 )
+from .override_safety import OverrideClassification, classify_override, is_override_allowed
 from .policy import I1PolicyConfig, policy_configuration_digest
 from .projection import project_m1_decision
 from .rules import I1RuleEngine
@@ -22,17 +41,36 @@ __all__ = [
     "DecisionContext",
     "DecisionEvaluation",
     "DecisionSourceProvenance",
+    "EMPTY_LEDGER_DIGEST",
+    "FROZEN_EVENT_TYPES",
+    "FROZEN_OUTCOMES",
+    "FROZEN_RESOLUTIONS",
     "HistoryFacts",
     "I1PolicyConfig",
     "I1RuleEngine",
+    "IntLedgerEvent",
+    "IntLedgerManifest",
     "IntegrityFacts",
+    "LEDGER_MANIFEST_SCHEMA_VERSION",
+    "LEDGER_SCHEMA_VERSION",
     "M1IntError",
     "OperatorFacts",
+    "OverrideClassification",
     "QualityFacts",
     "RULE_VERSION",
     "SafetyFacts",
     "SessionFacts",
+    "build_int_ledger_event",
+    "canonical_event_bytes",
+    "canonical_event_payload",
+    "classify_override",
+    "event_fingerprint",
     "history_fingerprint",
+    "is_override_allowed",
     "policy_configuration_digest",
     "project_m1_decision",
+    "require_frozen_outcome",
+    "require_frozen_resolution",
+    "require_machine_decision_record",
+    "validate_int_ledger_manifest",
 ]
