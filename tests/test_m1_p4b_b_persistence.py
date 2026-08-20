@@ -74,11 +74,17 @@ def _decision(
     )
 
 
-def _provenance(software: str = SOFTWARE_A) -> DecisionSourceProvenance:
+def _provenance(
+    software: str = SOFTWARE_A,
+    *,
+    app_run_id: str | None = "run-0001",
+    app_analysis_fingerprint: str | None = FINGERPRINT,
+    sp_result_fingerprint: str | None = FINGERPRINT,
+) -> DecisionSourceProvenance:
     return DecisionSourceProvenance(
-        app_run_id="run-0001",
-        app_analysis_fingerprint=FINGERPRINT,
-        sp_result_fingerprint=FINGERPRINT,
+        app_run_id=app_run_id,
+        app_analysis_fingerprint=app_analysis_fingerprint,
+        sp_result_fingerprint=sp_result_fingerprint,
         run_signal_processing_version="0.4.0-p2d",
         session_signal_processing_version="0.4.0-p2d",
         software_commit_sha=software,
@@ -161,7 +167,7 @@ class DecisionAppendTests(unittest.TestCase):
         first = ledger.append_decision(_decision(), _provenance())
         before_d = (self.root / SESSION_A / "int" / "decisions.jsonl").read_bytes()
         before_e = (self.root / SESSION_A / "int" / "decision-events.jsonl").read_bytes()
-        second = ledger.append_decision(_decision(), _provenance(SOFTWARE_B))
+        second = ledger.append_decision(_decision(), _provenance())
         self.assertEqual(second.status, ALREADY_COMMITTED)
         self.assertEqual(second.event_seq, first.event_seq)
         self.assertEqual((self.root / SESSION_A / "int" / "decisions.jsonl").read_bytes(), before_d)
@@ -169,6 +175,31 @@ class DecisionAppendTests(unittest.TestCase):
         manifest = ledger.verify_decision_ledger_minimal(SESSION_A)
         self.assertEqual(manifest.decision_count, 1)
         self.assertEqual(manifest.event_count, 1)
+
+    def test_same_decision_different_software_sha_is_provenance_mismatch(self) -> None:
+        ledger = _ledger(self.root)
+        first = ledger.append_decision(_decision(), _provenance(SOFTWARE_A))
+        before_e = (self.root / SESSION_A / "int" / "decision-events.jsonl").read_bytes()
+        with self.assertRaises(M1IntError) as raised:
+            ledger.append_decision(_decision(), _provenance(SOFTWARE_B))
+        self.assertEqual(raised.exception.code, "provenance_mismatch")
+        self.assertEqual((self.root / SESSION_A / "int" / "decision-events.jsonl").read_bytes(), before_e)
+        self.assertEqual(first.status, COMMITTED)
+
+    def test_same_decision_different_run_or_fingerprint_is_provenance_mismatch(self) -> None:
+        ledger = _ledger(self.root)
+        ledger.append_decision(_decision(), _provenance())
+        cases = (
+            _provenance(app_run_id="run-0002"),
+            _provenance(app_analysis_fingerprint="11" * 32),
+            _provenance(sp_result_fingerprint="22" * 32),
+        )
+        for provenance in cases:
+            with self.subTest(provenance=provenance):
+                with self.assertRaises(M1IntError) as raised:
+                    ledger.append_decision(_decision(), provenance)
+                self.assertEqual(raised.exception.code, "provenance_mismatch")
+        self.assertEqual((self.root / SESSION_A / "int" / "decision-events.jsonl").read_bytes().count(b"\n"), 1)
 
     def test_same_id_changed_action_conflicts(self) -> None:
         ledger = _ledger(self.root)
@@ -214,16 +245,57 @@ class DecisionAppendTests(unittest.TestCase):
             ledger.append_decision(_decision(decided_at="2026-08-20T00:00:00Z"), _provenance())
         self.assertEqual(raised.exception.code, "duplicate_conflict")
 
-    def test_software_sha_does_not_change_decision_id(self) -> None:
+    def test_same_id_changed_reason_retry_or_quality_conflicts(self) -> None:
+        ledger = _ledger(self.root)
+        ledger.append_decision(_decision(), _provenance())
+        variants = (
+            replace(_decision(), reason_codes=("quality_borderline",)),
+            replace(_decision(), retry_count=1),
+            replace(_decision(), max_retry_count=3),
+            replace(_decision(), device_state="IDLE"),
+            replace(_decision(), quality_reference=QualityReference(session_id=SESSION_A, window_id="window-0002")),
+        )
+        for decision in variants:
+            with self.subTest(decision=decision):
+                with self.assertRaises(M1IntError) as raised:
+                    ledger.append_decision(decision, _provenance())
+                self.assertEqual(raised.exception.code, "duplicate_conflict")
+
+    def test_software_sha_does_not_enter_decision_id_but_is_audit_bound(self) -> None:
         decision = _decision()
         require_machine_decision_record(decision)
         self.assertEqual(decision.decision_id, DECISION_A)
         ledger = _ledger(self.root)
         ledger.append_decision(decision, _provenance(SOFTWARE_A))
-        again = ledger.append_decision(decision, _provenance(SOFTWARE_B))
-        self.assertEqual(again.status, ALREADY_COMMITTED)
+        with self.assertRaises(M1IntError) as raised:
+            ledger.append_decision(decision, _provenance(SOFTWARE_B))
+        self.assertEqual(raised.exception.code, "provenance_mismatch")
         loaded = ledger.load_machine_decision(SESSION_A, DECISION_A)
         self.assertEqual(loaded.decision_id, DECISION_A)
+        event = json.loads((self.root / SESSION_A / "int" / "decision-events.jsonl").read_text().splitlines()[0])
+        self.assertEqual(event["software_commit_sha"], SOFTWARE_A)
+        self.assertEqual((self.root / SESSION_A / "int" / "decision-events.jsonl").read_bytes().count(b"\n"), 1)
+
+    def test_unsafe_session_ids_are_rejected(self) -> None:
+        ledger = _ledger(self.root)
+        unsafe = (
+            "../escape",
+            "..\\escape",
+            "/tmp/abs",
+            r"C:\abs",
+            ".",
+            "..",
+            "",
+            " spaced",
+            "space id",
+            "con",
+            "NUL",
+        )
+        for session_id in unsafe:
+            with self.subTest(session_id=session_id):
+                with self.assertRaises(M1IntError) as raised:
+                    ledger.append_decision(_decision(session_id=session_id), _provenance())
+                self.assertEqual(raised.exception.code, "invalid_input")
 
     def test_wrong_session_and_schema_fail_closed(self) -> None:
         ledger = _ledger(self.root)
@@ -285,16 +357,146 @@ class CrashRecoveryTests(unittest.TestCase):
                     recovered.verify_decision_ledger_minimal(SESSION_A)
                     self.assertFalse((case_root / SESSION_A / "int" / ".pending-commit.json").exists())
 
-    def test_partial_trailing_decision_is_truncated(self) -> None:
+    def test_no_pending_trailing_partial_is_untrusted(self) -> None:
         ledger = _ledger(self.root)
         ledger.append_decision(_decision(), _provenance())
         path = self.root / SESSION_A / "int" / "decisions.jsonl"
-        path.write_bytes(path.read_bytes() + b'{"decision_id":"partial"')
+        before = path.read_bytes()
+        path.write_bytes(before + b'{"decision_id":"partial"')
+        with self.assertRaises(M1IntError) as raised:
+            ledger.recover_pending_commit(SESSION_A)
+        self.assertEqual(raised.exception.code, "ledger_untrusted")
+        self.assertEqual(path.read_bytes(), before + b'{"decision_id":"partial"')
+
+    def test_pending_bound_missing_newline_prefix_is_recovered(self) -> None:
+        failing = _ledger(self.root, _fail_at("decisions_append"))
+        with self.assertRaises(M1IntError) as raised:
+            failing.append_decision(_decision(), _provenance())
+        self.assertEqual(raised.exception.code, "persistence_failure")
+        path = self.root / SESSION_A / "int" / "decisions.jsonl"
+        complete = path.read_bytes()
+        self.assertTrue(complete.endswith(b"\n"))
+        path.write_bytes(complete[:-1])
+        recovered = _ledger(self.root)
+        loaded = recovered.load_machine_decision(SESSION_A, DECISION_A)
+        self.assertEqual(loaded.decision_id, DECISION_A)
+        recovered.verify_decision_ledger_minimal(SESSION_A)
+        self.assertFalse((self.root / SESSION_A / "int" / ".pending-commit.json").exists())
+
+    def test_pending_bound_divergent_tail_is_untrusted(self) -> None:
+        failing = _ledger(self.root, _fail_at("decisions_append"))
+        with self.assertRaises(M1IntError):
+            failing.append_decision(_decision(), _provenance())
+        path = self.root / SESSION_A / "int" / "decisions.jsonl"
+        path.write_bytes(b'{"other":true')
+        with self.assertRaises(M1IntError) as raised:
+            _ledger(self.root).recover_pending_commit(SESSION_A)
+        self.assertEqual(raised.exception.code, "ledger_untrusted")
+
+    def test_completed_transaction_with_retained_pending_is_cleared(self) -> None:
+        ledger = _ledger(self.root)
+        ledger.append_decision(_decision(), _provenance())
+        int_dir = self.root / SESSION_A / "int"
+        decisions = (int_dir / "decisions.jsonl").read_bytes()
+        events = (int_dir / "decision-events.jsonl").read_bytes()
+        pending = {
+            "schema_version": PENDING_SCHEMA_VERSION,
+            "session_id": SESSION_A,
+            "decision_id": DECISION_A,
+            "ledger_schema_version": "i1-ledger-1.0.0-pre",
+            "pre_decision_count": 0,
+            "pre_event_count": 0,
+            "pre_last_event_seq": 0,
+            "pre_decisions_sha256": EMPTY_LEDGER_DIGEST,
+            "pre_events_sha256": EMPTY_LEDGER_DIGEST,
+            "decision_record": decisions.decode("utf-8"),
+            "event_records": [events.decode("utf-8")],
+            "post_decision_count": 1,
+            "post_event_count": 1,
+            "post_last_event_seq": 1,
+            "post_decisions_sha256": hashlib.sha256(decisions).hexdigest(),
+            "post_events_sha256": hashlib.sha256(events).hexdigest(),
+            "decision_rule_version": "i1-pre-0.1.0",
+            "configuration_digest": CONFIG,
+            "software_commit_sha": SOFTWARE_A,
+        }
+        (int_dir / ".pending-commit.json").write_text(json.dumps(pending, sort_keys=True) + "\n", encoding="utf-8")
         ledger.recover_pending_commit(SESSION_A)
-        text = path.read_text(encoding="utf-8")
-        self.assertTrue(text.endswith("\n"))
-        self.assertEqual(text.count("\n"), 1)
+        self.assertFalse((int_dir / ".pending-commit.json").exists())
         ledger.verify_decision_ledger_minimal(SESSION_A)
+
+    def test_stale_pending_after_later_transaction_is_untrusted(self) -> None:
+        ledger = _ledger(self.root)
+        ledger.append_decision(_decision(), _provenance())
+        first_d = (self.root / SESSION_A / "int" / "decisions.jsonl").read_bytes()
+        first_e = (self.root / SESSION_A / "int" / "decision-events.jsonl").read_bytes()
+        ledger.append_decision(_decision(decision_id=DECISION_B, action=DecisionAction.STOP), _provenance())
+        pending = {
+            "schema_version": PENDING_SCHEMA_VERSION,
+            "session_id": SESSION_A,
+            "decision_id": DECISION_A,
+            "ledger_schema_version": "i1-ledger-1.0.0-pre",
+            "pre_decision_count": 0,
+            "pre_event_count": 0,
+            "pre_last_event_seq": 0,
+            "pre_decisions_sha256": EMPTY_LEDGER_DIGEST,
+            "pre_events_sha256": EMPTY_LEDGER_DIGEST,
+            "decision_record": first_d.decode("utf-8"),
+            "event_records": [first_e.decode("utf-8")],
+            "post_decision_count": 1,
+            "post_event_count": 1,
+            "post_last_event_seq": 1,
+            "post_decisions_sha256": hashlib.sha256(first_d).hexdigest(),
+            "post_events_sha256": hashlib.sha256(first_e).hexdigest(),
+            "decision_rule_version": "i1-pre-0.1.0",
+            "configuration_digest": CONFIG,
+            "software_commit_sha": SOFTWARE_A,
+        }
+        (self.root / SESSION_A / "int" / ".pending-commit.json").write_text(
+            json.dumps(pending, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(M1IntError) as raised:
+            ledger.recover_pending_commit(SESSION_A)
+        self.assertEqual(raised.exception.code, "ledger_untrusted")
+        (self.root / SESSION_A / "int" / ".pending-commit.json").unlink()
+        self.assertEqual(_ledger(self.root).verify_decision_ledger_minimal(SESSION_A).decision_count, 2)
+
+    def test_cross_session_pending_is_untrusted(self) -> None:
+        ledger = _ledger(self.root)
+        ledger.append_decision(_decision(), _provenance())
+        ledger.append_decision(_decision(session_id=SESSION_B, decision_id=DECISION_B), _provenance())
+        source = (self.root / SESSION_B / "int" / ".pending-commit.json")
+        # SESSION_B has no pending; plant SESSION_B identity into SESSION_A.
+        pending = {
+            "schema_version": PENDING_SCHEMA_VERSION,
+            "session_id": SESSION_B,
+            "decision_id": DECISION_B,
+            "ledger_schema_version": "i1-ledger-1.0.0-pre",
+            "pre_decision_count": 0,
+            "pre_event_count": 0,
+            "pre_last_event_seq": 0,
+            "pre_decisions_sha256": EMPTY_LEDGER_DIGEST,
+            "pre_events_sha256": EMPTY_LEDGER_DIGEST,
+            "decision_record": (self.root / SESSION_B / "int" / "decisions.jsonl").read_text(encoding="utf-8"),
+            "event_records": [(self.root / SESSION_B / "int" / "decision-events.jsonl").read_text(encoding="utf-8")],
+            "post_decision_count": 1,
+            "post_event_count": 1,
+            "post_last_event_seq": 1,
+            "post_decisions_sha256": hashlib.sha256((self.root / SESSION_B / "int" / "decisions.jsonl").read_bytes()).hexdigest(),
+            "post_events_sha256": hashlib.sha256((self.root / SESSION_B / "int" / "decision-events.jsonl").read_bytes()).hexdigest(),
+            "decision_rule_version": "i1-pre-0.1.0",
+            "configuration_digest": CONFIG,
+            "software_commit_sha": SOFTWARE_A,
+        }
+        (self.root / SESSION_A / "int" / ".pending-commit.json").write_text(
+            json.dumps(pending, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        del source
+        with self.assertRaises(M1IntError) as raised:
+            ledger.recover_pending_commit(SESSION_A)
+        self.assertEqual(raised.exception.code, "ledger_untrusted")
 
     def test_middle_corruption_is_untrusted(self) -> None:
         ledger = _ledger(self.root)
@@ -405,6 +607,23 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(manifest.decision_count, 2)
         self.assertEqual(manifest.event_count, 2)
         self.assertEqual(manifest.last_event_seq, 2)
+        events = [
+            json.loads(line)
+            for line in (self.root / SESSION_A / "int" / "decision-events.jsonl").read_text().splitlines()
+        ]
+        self.assertEqual([item["event_seq"] for item in events], [1, 2])
+
+    def test_same_process_threads_serialize_and_keep_seq(self) -> None:
+        first = _decision()
+        second = _decision(decision_id=DECISION_B, action=DecisionAction.STOP)
+        shared = _ledger(self.root)
+
+        def write(decision: M1Decision):
+            return shared.append_decision(decision, _provenance())
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(write, (first, second)))
+        self.assertEqual({item.status for item in results}, {COMMITTED})
         events = [
             json.loads(line)
             for line in (self.root / SESSION_A / "int" / "decision-events.jsonl").read_text().splitlines()

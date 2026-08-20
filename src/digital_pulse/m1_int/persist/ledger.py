@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 from typing import Any, Callable, Mapping
 
 from digital_pulse.m1_contracts import (
@@ -42,6 +43,7 @@ from .locking import int_session_lock
 FailureInjector = Callable[[str], None]
 PENDING_SCHEMA_VERSION = "i1-ledger-pending-1.0.0-pre"
 AWAITING_ACTIONS = frozenset({DecisionAction.MANUAL_REVIEW.value, DecisionAction.REPOSITION.value})
+_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _WINDOWS_RESERVED = {
     "CON",
     "PRN",
@@ -144,6 +146,7 @@ class DecisionLedger:
         prior = existing.get(decision.decision_id)
         if prior is not None:
             if prior == decision_line:
+                _assert_retry_provenance_matches(events.records, decision.decision_id, source_provenance)
                 recorded_seq = _recorded_seq_for(events.records, decision.decision_id)
                 awaiting_seq = _awaiting_seq_for(events.records, decision.decision_id)
                 return AppendResult(
@@ -194,10 +197,11 @@ class DecisionLedger:
         decisions = self._read_jsonl(decisions_path)
         events = self._read_jsonl(events_path)
         if pending is None:
-            if decisions.trailing_partial:
-                self._truncate_to(decisions_path, decisions.complete_bytes)
-            if events.trailing_partial:
-                self._truncate_to(events_path, events.complete_bytes)
+            if decisions.trailing_partial or events.trailing_partial:
+                raise M1IntError(
+                    "ledger_untrusted",
+                    "trailing partial record exists without a bound pending commit",
+                )
             if (int_dir / "manifest.json").exists() or decisions.records or events.records:
                 self._reconcile_manifest(session_id, int_dir)
             return
@@ -208,6 +212,7 @@ class DecisionLedger:
             raise M1IntError("version_mismatch", "pending commit schema is not supported")
         decision_line = _b64_or_text(pending["decision_record"])
         event_lines = [_b64_or_text(item) for item in pending["event_records"]]
+        _require_pending_intended_records(decision_line, event_lines)
         pre_decision_count = int(pending["pre_decision_count"])
         pre_event_count = int(pending["pre_event_count"])
         decisions = self._recover_decision_trailing(
@@ -274,7 +279,17 @@ class DecisionLedger:
             self._clear_pending(int_dir)
             return
         written_new = len(events.records) - pre_event_count
-        if actual_d == post_d and 0 <= written_new < len(event_lines):
+        if actual_d == post_d and 0 < written_new < len(event_lines):
+            written_tail = b"".join(
+                (dumps_canonical(record) + "\n").encode("utf-8")
+                for record in events.records[pre_event_count:]
+            )
+            expected_tail = b"".join(event_lines[:written_new])
+            if written_tail != expected_tail:
+                raise M1IntError(
+                    "ledger_untrusted",
+                    "partial event prefix does not match pending intended bytes",
+                )
             remainder = b"".join(event_lines[written_new:])
             if remainder:
                 self._append_exact(int_dir / "decision-events.jsonl", remainder, "events")
@@ -346,6 +361,8 @@ class DecisionLedger:
             raise M1IntError("ledger_untrusted", "cannot reconcile manifest over a partial ledger")
         if not decisions.records and not events.records:
             return
+        # Crash-consistency only: rebuild a stale/missing manifest from JSONL
+        # that already passed minimal integrity. This is not tamper evidence.
         self._assert_minimal_integrity(session_id, decisions, events)
         rule_version, config, software = _provenance_from_events(events.records)
         manifest = _manifest_from_ledger(
@@ -411,7 +428,8 @@ class DecisionLedger:
                 raise M1IntError("ledger_untrusted", "decision record is not canonical")
             del index
         expected_seq = 1
-        recorded_ids: set[str] = set()
+        recorded_seq_by_id: dict[str, int] = {}
+        awaiting_seq_by_id: dict[str, int] = {}
         for record in events.records:
             event = _event_from_record(record)
             if event.session_id != session_id:
@@ -423,10 +441,29 @@ class DecisionLedger:
             if event.event_type == "decision_recorded":
                 if event.decision_id not in seen:
                     raise M1IntError("ledger_untrusted", "decision_recorded references an unknown decision")
-                recorded_ids.add(event.decision_id or "")
+                if event.decision_id in recorded_seq_by_id:
+                    raise M1IntError("ledger_untrusted", "decision_recorded is duplicated for one decision")
+                recorded_seq_by_id[event.decision_id or ""] = event.event_seq
+            elif event.event_type == "awaiting_operator":
+                if event.decision_id not in recorded_seq_by_id:
+                    raise M1IntError("ledger_untrusted", "awaiting_operator precedes decision_recorded")
+                if event.decision_id in awaiting_seq_by_id:
+                    raise M1IntError("ledger_untrusted", "awaiting_operator is duplicated for one decision")
+                recorded_seq = recorded_seq_by_id[event.decision_id or ""]
+                if event.event_seq != recorded_seq + 1:
+                    raise M1IntError("ledger_untrusted", "awaiting_operator is not the next event after decision_recorded")
+                awaiting_seq_by_id[event.decision_id or ""] = event.event_seq
             expected_seq += 1
-        if seen - recorded_ids:
+        if seen - set(recorded_seq_by_id):
             raise M1IntError("ledger_untrusted", "decision exists without decision_recorded")
+        for record in decisions.records:
+            decision = _decision_from_record(record)
+            action = _action_value(decision.action)
+            has_awaiting = decision.decision_id in awaiting_seq_by_id
+            if action in AWAITING_ACTIONS and not has_awaiting:
+                raise M1IntError("ledger_untrusted", "manual_review/reposition is missing awaiting_operator")
+            if action not in AWAITING_ACTIONS and has_awaiting:
+                raise M1IntError("ledger_untrusted", "awaiting_operator is not allowed for this action")
 
     def _read_jsonl(self, path: Path) -> _JsonlView:
         if not path.exists():
@@ -764,6 +801,75 @@ def _index_decisions(records: tuple[dict[str, Any], ...]) -> dict[str, bytes]:
     return indexed
 
 
+def _assert_retry_provenance_matches(
+    records: tuple[dict[str, Any], ...],
+    decision_id: str,
+    provenance: DecisionSourceProvenance,
+) -> None:
+    recorded = None
+    for record in records:
+        if record.get("event_type") == "decision_recorded" and record.get("decision_id") == decision_id:
+            recorded = record
+            break
+    if recorded is None:
+        raise M1IntError("ledger_untrusted", "committed decision is missing decision_recorded")
+    expected = {
+        "app_analysis_fingerprint": provenance.app_analysis_fingerprint,
+        "app_run_id": provenance.app_run_id,
+        "software_commit_sha": provenance.software_commit_sha,
+        "sp_result_fingerprint": provenance.sp_result_fingerprint,
+    }
+    actual = {key: recorded.get(key) for key in expected}
+    if actual != expected:
+        raise M1IntError(
+            "provenance_mismatch",
+            "retry provenance does not match the committed decision_recorded audit fact",
+        )
+
+
+def _require_pending_intended_records(decision_line: bytes, event_lines: list[bytes]) -> None:
+    try:
+        decision_payload = json.loads(decision_line.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise M1IntError("ledger_untrusted", "pending decision record is not JSON") from exc
+    if not isinstance(decision_payload, dict):
+        raise M1IntError("ledger_untrusted", "pending decision record is not an object")
+    decision = _decision_from_record(decision_payload)
+    try:
+        require_machine_decision_record(decision)
+    except M1IntError as exc:
+        raise M1IntError("ledger_untrusted", "pending decision is not a machine decision record") from exc
+    if _decision_line_bytes(decision) != decision_line:
+        raise M1IntError("ledger_untrusted", "pending decision record is not canonical")
+    if not event_lines:
+        raise M1IntError("ledger_untrusted", "pending commit has no intended events")
+    parsed_events = []
+    for raw in event_lines:
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise M1IntError("ledger_untrusted", "pending event record is not JSON") from exc
+        if not isinstance(payload, dict):
+            raise M1IntError("ledger_untrusted", "pending event record is not an object")
+        event = _event_from_record(payload)
+        if _event_line_bytes(event) != raw:
+            raise M1IntError("ledger_untrusted", "pending event record is not canonical")
+        parsed_events.append(event)
+    recorded = parsed_events[0]
+    if recorded.event_type != "decision_recorded" or recorded.decision_id != decision.decision_id:
+        raise M1IntError("ledger_untrusted", "pending first event is not decision_recorded for the decision")
+    action = _action_value(decision.action)
+    if action in AWAITING_ACTIONS:
+        if len(parsed_events) != 2 or parsed_events[1].event_type != "awaiting_operator":
+            raise M1IntError("ledger_untrusted", "pending companion awaiting_operator is missing")
+        if parsed_events[1].decision_id != decision.decision_id:
+            raise M1IntError("ledger_untrusted", "pending awaiting_operator points at the wrong decision")
+        if parsed_events[1].event_seq != recorded.event_seq + 1:
+            raise M1IntError("ledger_untrusted", "pending awaiting_operator sequence is not contiguous")
+    elif len(parsed_events) != 1:
+        raise M1IntError("ledger_untrusted", "pending contains an unexpected companion event")
+
+
 def _recorded_seq_for(records: tuple[dict[str, Any], ...], decision_id: str) -> int:
     for record in records:
         if record.get("event_type") == "decision_recorded" and record.get("decision_id") == decision_id:
@@ -790,12 +896,16 @@ def _provenance_from_events(records: tuple[dict[str, Any], ...]) -> tuple[str, s
 
 
 def _require_session_id(session_id: str) -> str:
-    if not isinstance(session_id, str) or not session_id or "/" in session_id or "\\" in session_id:
+    if not isinstance(session_id, str) or not session_id or session_id != session_id.strip():
         raise M1IntError("invalid_input", "session_id is not a portable INT path segment")
-    if session_id in {".", ".."} or any(ord(char) < 32 or char in '<>:"|?*' for char in session_id):
+    if "/" in session_id or "\\" in session_id or ":" in session_id:
+        raise M1IntError("invalid_input", "session_id is not a portable INT path segment")
+    if session_id in {".", ".."} or any(ord(char) < 32 or char in '<>"|?*' for char in session_id):
         raise M1IntError("invalid_input", "session_id contains an unsafe character")
     if session_id.split(".", 1)[0].upper() in _WINDOWS_RESERVED:
         raise M1IntError("invalid_input", "session_id is a reserved Windows name")
+    if not _SESSION_ID_PATTERN.fullmatch(session_id):
+        raise M1IntError("invalid_input", "session_id is not a portable INT path segment")
     if PurePosixPath(session_id).as_posix() != session_id:
         raise M1IntError("invalid_input", "session_id is not a canonical path segment")
     return session_id

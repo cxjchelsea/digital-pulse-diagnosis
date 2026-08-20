@@ -5,30 +5,53 @@ from __future__ import annotations
 from contextlib import contextmanager
 import os
 from pathlib import Path
+import threading
 from typing import BinaryIO, Iterator
 
 from digital_pulse.m1_int.errors import M1IntError
 
+_PROCESS_LOCKS_GUARD = threading.Lock()
+_PROCESS_LOCKS: dict[str, threading.RLock] = {}
+
 
 @contextmanager
 def int_session_lock(int_dir: Path) -> Iterator[None]:
-    """Exclusive lock covering one session INT ledger commit."""
+    """Exclusive lock covering one session INT ledger commit.
 
+    OS file locks do not reliably serialize same-process threads that open
+    distinct descriptors. A process-local lock is acquired first.
+    """
+
+    thread_lock = _process_lock(int_dir)
+    with thread_lock:
+        try:
+            int_dir.mkdir(parents=True, exist_ok=True)
+            lock_path = int_dir / ".lock"
+            if _is_link_or_junction(lock_path):
+                raise M1IntError("lock_failure", "INT lock path is a symbolic link or junction")
+            with lock_path.open("a+b") as handle:
+                _lock_handle(handle)
+                try:
+                    yield
+                finally:
+                    _unlock_handle(handle)
+        except M1IntError:
+            raise
+        except OSError as exc:
+            raise M1IntError("lock_failure", "INT session lock could not be acquired") from exc
+
+
+def _process_lock(int_dir: Path) -> threading.RLock:
     try:
-        int_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = int_dir / ".lock"
-        if _is_link_or_junction(lock_path):
-            raise M1IntError("lock_failure", "INT lock path is a symbolic link or junction")
-        with lock_path.open("a+b") as handle:
-            _lock_handle(handle)
-            try:
-                yield
-            finally:
-                _unlock_handle(handle)
-    except M1IntError:
-        raise
-    except OSError as exc:
-        raise M1IntError("lock_failure", "INT session lock could not be acquired") from exc
+        key = str(int_dir.resolve())
+    except OSError:
+        key = str(int_dir)
+    with _PROCESS_LOCKS_GUARD:
+        lock = _PROCESS_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _PROCESS_LOCKS[key] = lock
+        return lock
 
 
 def _lock_handle(handle: BinaryIO) -> None:
