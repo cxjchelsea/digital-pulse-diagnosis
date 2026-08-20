@@ -1,4 +1,4 @@
-"""M1-P4A 规则核心与 P4B-A ledger 纯合同公开 API。"""
+"""M1-P4A 规则核心、P4B-A ledger 合同与 P4B-B decision persistence 公开 API。"""
 
 from .errors import M1IntError
 from .ledger_models import (
@@ -34,12 +34,18 @@ from .models import (
     history_fingerprint,
 )
 from .override_safety import OverrideClassification, classify_override, is_override_allowed
+from .persist import ALREADY_COMMITTED, COMMITTED, AppendResult, AppendStatus, DecisionLedger
 from .policy import I1PolicyConfig, policy_configuration_digest
 from .projection import project_m1_decision
 from .rules import I1RuleEngine
 
 __all__ = [
+    "ALREADY_COMMITTED",
+    "COMMITTED",
+    "AppendResult",
+    "AppendStatus",
     "DecisionContext",
+    "DecisionLedger",
     "DecisionEvaluation",
     "DecisionSourceProvenance",
     "EMPTY_LEDGER_DIGEST",

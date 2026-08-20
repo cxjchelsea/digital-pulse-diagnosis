@@ -64,3 +64,6 @@ artifacts/
 
 # Isolated git worktrees
 .worktrees/
+
+# Local P4B-B persistence test scratch
+tests/_p4bb_tmp/
