@@ -21,6 +21,7 @@ from digital_pulse.m1_int import (
     require_frozen_outcome,
     require_frozen_resolution,
     require_machine_decision_record,
+    validate_int_ledger_event,
 )
 from digital_pulse.m1_int.ledger_models import EMPTY_LEDGER_DIGEST, IntLedgerManifest, validate_int_ledger_manifest
 from digital_pulse.m1_p4a_acceptance import (
@@ -42,6 +43,24 @@ SESSION_ID = "session-p4b-a-acceptance"
 DECISION_ID = "m1-decision-" + ("ab" * 32)
 SOFTWARE_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 CONFIG_DIGEST = "cd" * 32
+I1_ACTIONS = (
+    "accept",
+    "retry_same_position",
+    "reposition",
+    "manual_review",
+    "stop",
+    "abort_and_release",
+)
+ALLOWED_OVERRIDE_PAIRS = {
+    ("accept", "manual_review"),
+    ("accept", "stop"),
+    ("retry_same_position", "stop"),
+    ("retry_same_position", "manual_review"),
+    ("reposition", "stop"),
+    ("reposition", "manual_review"),
+    ("manual_review", "stop"),
+    ("stop", "abort_and_release"),
+}
 
 
 def _git(*args: str) -> str:
@@ -111,6 +130,221 @@ def _scan_p4b_a_boundaries() -> tuple[bool, bool, bool]:
     return persistence_ok, scope_ok, persistence_scanner_self_test
 
 
+def _probe_event_type_contracts() -> tuple[bool, int]:
+    """逐类型攻击：缺字段、禁止字段、错 outcome、非法 seq。"""
+
+    cases = 0
+    ok = True
+    scope = "m1-retry-scope-" + ("aa" * 32)
+
+    def expect_invalid(**kwargs: Any) -> None:
+        nonlocal cases, ok
+        cases += 1
+        try:
+            build_int_ledger_event(session_id=SESSION_ID, occurred_at_utc="2026-01-01T00:00:00Z", **kwargs)
+            ok = False
+        except M1IntError as exc:
+            ok = ok and exc.code == "invalid_input"
+
+    expect_invalid(event_seq=1, event_type="override_requested", decision_id=DECISION_ID)
+    expect_invalid(event_seq=1, event_type="OPERATOR_OVERRIDE", decision_id=DECISION_ID)
+    expect_invalid(event_seq=0, event_type="action_applied", decision_id=DECISION_ID)
+    expect_invalid(event_seq=-1, event_type="action_applied", decision_id=DECISION_ID)
+    expect_invalid(
+        event_seq=1,
+        event_type="action_applied",
+        decision_id=DECISION_ID,
+        operator_id="op",
+    )
+    expect_invalid(
+        event_seq=1,
+        event_type="decision_recorded",
+        decision_id=DECISION_ID,
+        software_commit_sha=SOFTWARE_SHA,
+        rule_version="i1-pre-0.1.0",
+        configuration_digest=CONFIG_DIGEST,
+        retry_scope_id=scope,
+    )
+    expect_invalid(
+        event_seq=1,
+        event_type="retry_scope_started",
+        retry_scope_id=scope,
+        decision_id=DECISION_ID,
+    )
+    expect_invalid(
+        event_seq=1,
+        event_type="operator_override",
+        decision_id=DECISION_ID,
+        requested_action="stop",
+        operator_id="op-001",
+        note="",
+    )
+    expect_invalid(
+        event_seq=1,
+        event_type="decision_completed",
+        decision_id=DECISION_ID,
+        outcome="applied",
+    )
+    expect_invalid(
+        event_seq=1,
+        event_type="manual_review_resolved",
+        decision_id=DECISION_ID,
+        operator_id="op-001",
+        resolution="accept_current_quality",
+    )
+    return ok, cases
+
+
+def _probe_identity_collisions() -> tuple[bool, int]:
+    """语义字段变化必须改 event_id；墙钟/软件 SHA 不得改。"""
+
+    probes = 0
+    first = build_int_ledger_event(
+        event_seq=1,
+        event_type="decision_recorded",
+        session_id=SESSION_ID,
+        decision_id=DECISION_ID,
+        occurred_at_utc="2026-01-01T00:00:00Z",
+        software_commit_sha=SOFTWARE_SHA,
+        rule_version="i1-pre-0.1.0",
+        configuration_digest=CONFIG_DIGEST,
+    )
+    second = build_int_ledger_event(
+        event_seq=1,
+        event_type="decision_recorded",
+        session_id=SESSION_ID,
+        decision_id=DECISION_ID,
+        occurred_at_utc="2026-08-19T15:00:00Z",
+        software_commit_sha="b" * 40,
+        rule_version="i1-pre-0.1.0",
+        configuration_digest=CONFIG_DIGEST,
+    )
+    probes += 1
+    ok = (
+        first.event_id == second.event_id
+        and first.event_id == f"m1-int-event-{event_fingerprint(first)}"
+    )
+    base = build_int_ledger_event(
+        event_seq=2,
+        event_type="operator_override",
+        session_id=SESSION_ID,
+        decision_id=DECISION_ID,
+        occurred_at_utc="2026-01-01T00:00:00Z",
+        requested_action="stop",
+        operator_id="op-001",
+        note="n1",
+    )
+    variants = [
+        build_int_ledger_event(
+            event_seq=2,
+            event_type="operator_override",
+            session_id=SESSION_ID,
+            decision_id=DECISION_ID,
+            occurred_at_utc="2026-01-01T00:00:00Z",
+            requested_action="manual_review",
+            operator_id="op-001",
+            note="n1",
+        ),
+        build_int_ledger_event(
+            event_seq=2,
+            event_type="operator_override",
+            session_id=SESSION_ID,
+            decision_id=DECISION_ID,
+            occurred_at_utc="2026-01-01T00:00:00Z",
+            requested_action="stop",
+            operator_id="op-002",
+            note="n1",
+        ),
+        build_int_ledger_event(
+            event_seq=2,
+            event_type="operator_override",
+            session_id=SESSION_ID,
+            decision_id=DECISION_ID,
+            occurred_at_utc="2026-01-01T00:00:00Z",
+            requested_action="stop",
+            operator_id="op-001",
+            note="n2",
+        ),
+    ]
+    probes += 3
+    ok = ok and len({base.event_id, *[item.event_id for item in variants]}) == 4
+    forged = replace(first, event_id="m1-int-event-" + ("0" * 64))
+    probes += 1
+    try:
+        validate_int_ledger_event(forged)
+        ok = False
+    except M1IntError as exc:
+        ok = ok and exc.code == "invalid_input"
+    return ok, probes
+
+
+def _probe_override_matrix() -> tuple[bool, int]:
+    cases = 0
+    ok = True
+    for machine_action in I1_ACTIONS:
+        for requested_action in I1_ACTIONS:
+            cases += 1
+            classification = classify_override(machine_action, requested_action)
+            if machine_action == requested_action:
+                ok = ok and classification is OverrideClassification.IDEMPOTENT_SAME_ACTION
+                ok = ok and not is_override_allowed(machine_action, requested_action)
+            elif (machine_action, requested_action) in ALLOWED_OVERRIDE_PAIRS:
+                ok = ok and classification is OverrideClassification.ALLOWED
+                ok = ok and is_override_allowed(machine_action, requested_action)
+            else:
+                ok = ok and classification is OverrideClassification.REJECTED_BY_SAFETY
+                ok = ok and not is_override_allowed(machine_action, requested_action)
+    return ok, cases
+
+
+def _probe_manifest_invalid() -> tuple[bool, int]:
+    base = IntLedgerManifest(
+        schema_version=LEDGER_MANIFEST_SCHEMA_VERSION,
+        session_id=SESSION_ID,
+        decision_rule_version="i1-pre-0.1.0",
+        configuration_digest=CONFIG_DIGEST,
+        software_commit_sha=SOFTWARE_SHA,
+        decisions_sha256=EMPTY_LEDGER_DIGEST,
+        events_sha256=EMPTY_LEDGER_DIGEST,
+        decision_count=0,
+        event_count=0,
+        last_event_seq=0,
+        current_decision_id=None,
+    )
+    attacks = [
+        replace(base, decision_count=-1),
+        replace(base, last_event_seq=1),
+        replace(
+            base,
+            event_count=2,
+            last_event_seq=0,
+            decisions_sha256="11" * 32,
+            events_sha256="22" * 32,
+        ),
+        replace(
+            base,
+            event_count=2,
+            last_event_seq=3,
+            decisions_sha256="11" * 32,
+            events_sha256="22" * 32,
+        ),
+        replace(base, current_decision_id=DECISION_ID),
+        replace(base, decision_count=1, current_decision_id=None, decisions_sha256="11" * 32),
+        replace(base, configuration_digest="CD" * 32),
+        replace(base, session_id="  "),
+        replace(base, schema_version="1.0.0"),
+    ]
+    ok = True
+    for manifest in attacks:
+        try:
+            validate_int_ledger_manifest(manifest)
+            ok = False
+        except M1IntError:
+            pass
+    validate_int_ledger_manifest(base)
+    return ok, len(attacks)
+
+
 def run_m1_p4b_a_acceptance(*, software_commit_sha: str, expected_head_sha: str) -> dict[str, Any]:
     """运行 P4B-A slice 门；失败关闭，不写 ledger 文件。"""
 
@@ -133,51 +367,11 @@ def run_m1_p4b_a_acceptance(*, software_commit_sha: str, expected_head_sha: str)
         "retry_scope_closed",
         "retry_attempt_linked",
     }
-    first = build_int_ledger_event(
-        event_seq=1,
-        event_type="decision_recorded",
-        session_id=SESSION_ID,
-        decision_id=DECISION_ID,
-        occurred_at_utc="2026-01-01T00:00:00Z",
-        software_commit_sha=SOFTWARE_SHA,
-        rule_version="i1-pre-0.1.0",
-        configuration_digest=CONFIG_DIGEST,
-    )
-    second = build_int_ledger_event(
-        event_seq=1,
-        event_type="decision_recorded",
-        session_id=SESSION_ID,
-        decision_id=DECISION_ID,
-        occurred_at_utc="2026-08-19T15:00:00Z",
-        software_commit_sha="b" * 40,
-        rule_version="i1-pre-0.1.0",
-        configuration_digest=CONFIG_DIGEST,
-    )
-    identity_ok = (
-        first.event_id == second.event_id
-        and first.event_id == f"m1-int-event-{event_fingerprint(first)}"
-        and "occurred_at_utc" not in first.event_id
-    )
-    unknown_rejected = False
-    try:
-        build_int_ledger_event(
-            event_seq=1,
-            event_type="override_requested",
-            session_id=SESSION_ID,
-            decision_id=DECISION_ID,
-            occurred_at_utc="2026-01-01T00:00:00Z",
-        )
-    except M1IntError as exc:
-        unknown_rejected = exc.code == "invalid_input"
+    event_contract_ok, event_type_contract_case_count = _probe_event_type_contracts()
+    identity_ok, identity_collision_probe_count = _probe_identity_collisions()
+    override_ok, override_matrix_case_count = _probe_override_matrix()
+    manifest_ok, manifest_invalid_case_count = _probe_manifest_invalid()
 
-    abort_protected = (
-        classify_override("abort_and_release", "accept") is OverrideClassification.REJECTED_BY_SAFETY
-        and not is_override_allowed("abort_and_release", "stop")
-        and not is_override_allowed("stop", "accept")
-        and not is_override_allowed("manual_review", "accept")
-        and is_override_allowed("accept", "stop")
-        and classify_override("stop", "stop") is OverrideClassification.IDEMPOTENT_SAME_ACTION
-    )
     resolution_ok = True
     for resolution in ("remain_awaiting", "terminate_stop", "continue_new_acquisition"):
         require_frozen_resolution(resolution)
@@ -238,22 +432,12 @@ def run_m1_p4b_a_acceptance(*, software_commit_sha: str, expected_head_sha: str)
         immutability_ok = False
     except M1IntError as exc:
         immutability_ok = exc.code == "invalid_input"
+    try:
+        require_machine_decision_record(replace(machine, outcome="applied"))
+        immutability_ok = False
+    except M1IntError as exc:
+        immutability_ok = immutability_ok and exc.code == "invalid_input"
 
-    validate_int_ledger_manifest(
-        IntLedgerManifest(
-            schema_version=LEDGER_MANIFEST_SCHEMA_VERSION,
-            session_id=SESSION_ID,
-            decision_rule_version="i1-pre-0.1.0",
-            configuration_digest=CONFIG_DIGEST,
-            software_commit_sha=SOFTWARE_SHA,
-            decisions_sha256=EMPTY_LEDGER_DIGEST,
-            events_sha256=EMPTY_LEDGER_DIGEST,
-            decision_count=0,
-            event_count=0,
-            last_event_seq=0,
-            current_decision_id=None,
-        )
-    )
     persistence_ok, scope_ok, persistence_scanner_self_test = _scan_p4b_a_boundaries()
     p3_ok = EXPECTED_P3_SOURCE == "2f4f88cc69fbdfb1e129d347025695334542eb9e"
     p3_digest_ok = EXPECTED_P3_DIGEST == "fd76868bb6bd80700ed38d6ef63bf0e0d1e18c6af68e83b1737d41ba7a73997f"
@@ -262,11 +446,28 @@ def run_m1_p4b_a_acceptance(*, software_commit_sha: str, expected_head_sha: str)
     gates = {
         "exact_head": _gate("exact_head", exact_head, software_commit_sha=software_commit_sha),
         "ledger_schema_pre": _gate("ledger_schema_pre", schema_ok, schema=LEDGER_SCHEMA_VERSION),
-        "frozen_event_types": _gate("frozen_event_types", event_set_ok and unknown_rejected),
-        "identity_excludes_clock_and_sha": _gate("identity_excludes_clock_and_sha", identity_ok),
-        "override_safety": _gate("override_safety", abort_protected),
+        "frozen_event_types": _gate(
+            "frozen_event_types",
+            event_set_ok and event_contract_ok,
+            event_type_contract_case_count=event_type_contract_case_count,
+        ),
+        "identity_collision_safe": _gate(
+            "identity_collision_safe",
+            identity_ok,
+            identity_collision_probe_count=identity_collision_probe_count,
+        ),
+        "override_matrix_closed": _gate(
+            "override_matrix_closed",
+            override_ok,
+            override_matrix_case_count=override_matrix_case_count,
+        ),
         "resolution_and_outcome": _gate("resolution_and_outcome", resolution_ok and outcome_ok),
         "machine_decision_immutable": _gate("machine_decision_immutable", immutability_ok),
+        "manifest_invariants": _gate(
+            "manifest_invariants",
+            manifest_ok,
+            manifest_invalid_case_count=manifest_invalid_case_count,
+        ),
         "no_persistence": _gate(
             "no_persistence",
             persistence_ok and persistence_scanner_self_test,
@@ -283,9 +484,13 @@ def run_m1_p4b_a_acceptance(*, software_commit_sha: str, expected_head_sha: str)
         "acceptance": failed == [],
         "acceptance_version": ACCEPTANCE_VERSION,
         "architecture_base_sha": ARCHITECTURE_BASE_SHA,
+        "event_type_contract_case_count": event_type_contract_case_count,
         "failed_gates": failed,
         "gates": gates,
+        "identity_collision_probe_count": identity_collision_probe_count,
         "ledger_schema_version": LEDGER_SCHEMA_VERSION,
+        "manifest_invalid_case_count": manifest_invalid_case_count,
+        "override_matrix_case_count": override_matrix_case_count,
         "p4a_merge_sha": P4A_MERGE_SHA,
         "software_commit_sha": software_commit_sha,
         "stage": "M1-P4B-A",

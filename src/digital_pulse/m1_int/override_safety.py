@@ -20,7 +20,12 @@ ALLOWED_OVERRIDE_TARGETS: dict[str, frozenset[str]] = {
 
 
 class OverrideClassification(str, Enum):
-    """覆盖请求分类。同动作不是一次新的业务覆盖。"""
+    """覆盖请求分类（动作对），不是 ledger 幂等结论。
+
+    IDEMPOTENT_SAME_ACTION 仅表示 machine_action == requested_action，
+    不能替代“同一 event_id / 同一 canonical payload 的 ledger no-op”。
+    真正的 append 幂等必须由完整事件身份判定。
+    """
 
     ALLOWED = "allowed"
     REJECTED_BY_SAFETY = "rejected_by_safety"

@@ -17,6 +17,7 @@ from .ledger_models import (
     require_frozen_outcome,
     require_frozen_resolution,
     require_machine_decision_record,
+    validate_int_ledger_event,
     validate_int_ledger_manifest,
 )
 from .models import (
@@ -72,5 +73,6 @@ __all__ = [
     "require_frozen_outcome",
     "require_frozen_resolution",
     "require_machine_decision_record",
+    "validate_int_ledger_event",
     "validate_int_ledger_manifest",
 ]

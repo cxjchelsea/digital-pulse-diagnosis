@@ -33,6 +33,7 @@ from digital_pulse.m1_int.ledger_models import (
     require_frozen_outcome,
     require_frozen_resolution,
     require_machine_decision_record,
+    validate_int_ledger_event,
     validate_int_ledger_manifest,
 )
 from digital_pulse.m1_int.override_safety import (
@@ -202,6 +203,102 @@ class EventTypeContractTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, "invalid_input")
 
+    def test_typo_and_case_variants_are_rejected(self) -> None:
+        for event_type in ("OPERATOR_OVERRIDE", "operator_override ", "Decision_Recorded"):
+            with self.subTest(event_type=event_type):
+                with self.assertRaises(M1IntError) as raised:
+                    build_int_ledger_event(
+                        event_seq=1,
+                        event_type=event_type,
+                        session_id=SESSION_ID,
+                        decision_id=DECISION_ID,
+                        occurred_at_utc=OCCURRED_AT,
+                    )
+                self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_forbidden_fields_on_wrong_event_types_are_rejected(self) -> None:
+        attacks = (
+            {
+                "event_type": "action_applied",
+                "decision_id": DECISION_ID,
+                "operator_id": "op-sneak",
+            },
+            {
+                "event_type": "action_applied",
+                "decision_id": DECISION_ID,
+                "retry_scope_id": "m1-retry-scope-" + ("aa" * 32),
+            },
+            {
+                "event_type": "decision_recorded",
+                "decision_id": DECISION_ID,
+                "software_commit_sha": SOFTWARE_SHA,
+                "rule_version": "i1-pre-0.1.0",
+                "configuration_digest": CONFIG_DIGEST,
+                "operator_id": "op-sneak",
+            },
+            {
+                "event_type": "retry_scope_started",
+                "retry_scope_id": "m1-retry-scope-" + ("aa" * 32),
+                "decision_id": DECISION_ID,
+            },
+            {
+                "event_type": "awaiting_operator",
+                "decision_id": DECISION_ID,
+                "note": "not-allowed",
+            },
+        )
+        for kwargs in attacks:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(M1IntError) as raised:
+                    build_int_ledger_event(
+                        event_seq=1,
+                        session_id=SESSION_ID,
+                        occurred_at_utc=OCCURRED_AT,
+                        **kwargs,
+                    )
+                self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_zero_and_negative_event_seq_are_rejected(self) -> None:
+        for event_seq in (0, -1):
+            with self.subTest(event_seq=event_seq):
+                with self.assertRaises(M1IntError) as raised:
+                    build_int_ledger_event(
+                        event_seq=event_seq,
+                        event_type="action_applied",
+                        session_id=SESSION_ID,
+                        decision_id=DECISION_ID,
+                        occurred_at_utc=OCCURRED_AT,
+                    )
+                self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_operator_override_rejects_blank_note(self) -> None:
+        for note in ("", "   "):
+            with self.subTest(note=repr(note)):
+                with self.assertRaises(M1IntError) as raised:
+                    build_int_ledger_event(
+                        event_seq=2,
+                        event_type="operator_override",
+                        session_id=SESSION_ID,
+                        decision_id=DECISION_ID,
+                        occurred_at_utc=OCCURRED_AT,
+                        requested_action="stop",
+                        operator_id="op-001",
+                        note=note,
+                    )
+                self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_mismatched_event_outcome_combinations_are_rejected(self) -> None:
+        with self.assertRaises(M1IntError) as raised:
+            build_int_ledger_event(
+                event_seq=1,
+                event_type="decision_completed",
+                session_id=SESSION_ID,
+                decision_id=DECISION_ID,
+                occurred_at_utc=OCCURRED_AT,
+                outcome="applied",
+            )
+        self.assertEqual(raised.exception.code, "invalid_input")
+
 
 class EventIdentityTests(unittest.TestCase):
     def test_event_id_is_deterministic(self) -> None:
@@ -262,6 +359,65 @@ class EventIdentityTests(unittest.TestCase):
         )
         identities = {first.event_id, second.event_id, third.event_id}
         self.assertEqual(len(identities), 3)
+
+    def test_override_semantic_mutations_change_event_id(self) -> None:
+        base = build_int_ledger_event(
+            event_seq=2,
+            event_type="operator_override",
+            session_id=SESSION_ID,
+            decision_id=DECISION_ID,
+            occurred_at_utc=OCCURRED_AT,
+            requested_action="stop",
+            operator_id="op-001",
+            note="n1",
+        )
+        variants = [
+            build_int_ledger_event(
+                event_seq=2,
+                event_type="operator_override",
+                session_id=SESSION_ID,
+                decision_id=DECISION_ID,
+                occurred_at_utc=OCCURRED_AT,
+                requested_action="manual_review",
+                operator_id="op-001",
+                note="n1",
+            ),
+            build_int_ledger_event(
+                event_seq=2,
+                event_type="operator_override",
+                session_id=SESSION_ID,
+                decision_id=DECISION_ID,
+                occurred_at_utc=OCCURRED_AT,
+                requested_action="stop",
+                operator_id="op-002",
+                note="n1",
+            ),
+            build_int_ledger_event(
+                event_seq=2,
+                event_type="operator_override",
+                session_id=SESSION_ID,
+                decision_id=DECISION_ID,
+                occurred_at_utc=OCCURRED_AT,
+                requested_action="stop",
+                operator_id="op-001",
+                note="n2",
+            ),
+        ]
+        self.assertEqual(len({base.event_id, *[item.event_id for item in variants]}), 4)
+
+    def test_forged_event_id_is_rejected_by_validator(self) -> None:
+        event = _recorded_event()
+        forged = replace(event, event_id="m1-int-event-" + ("0" * 64))
+        with self.assertRaises(M1IntError) as raised:
+            validate_int_ledger_event(forged)
+        self.assertEqual(raised.exception.code, "invalid_input")
+
+    def test_wrong_prefix_event_id_is_rejected(self) -> None:
+        event = _recorded_event()
+        forged = replace(event, event_id="m1-decision-" + event.event_id.split("-", 3)[-1])
+        with self.assertRaises(M1IntError) as raised:
+            validate_int_ledger_event(forged)
+        self.assertEqual(raised.exception.code, "invalid_input")
 
 
 class ManifestContractTests(unittest.TestCase):
@@ -365,6 +521,10 @@ class OverrideSafetyTests(unittest.TestCase):
             ("stop", "reposition"),
             ("stop", "manual_review"),
             ("manual_review", "accept"),
+            ("accept", "abort_and_release"),
+            ("retry_same_position", "abort_and_release"),
+            ("reposition", "abort_and_release"),
+            ("manual_review", "abort_and_release"),
         )
         for machine_action, requested_action in forbidden:
             with self.subTest(machine_action=machine_action, requested_action=requested_action):
@@ -373,6 +533,43 @@ class OverrideSafetyTests(unittest.TestCase):
                     classify_override(machine_action, requested_action),
                     OverrideClassification.REJECTED_BY_SAFETY,
                 )
+
+    def test_full_six_by_six_matrix_is_closed(self) -> None:
+        actions = (
+            "accept",
+            "retry_same_position",
+            "reposition",
+            "manual_review",
+            "stop",
+            "abort_and_release",
+        )
+        allowed = {
+            ("accept", "manual_review"),
+            ("accept", "stop"),
+            ("retry_same_position", "stop"),
+            ("retry_same_position", "manual_review"),
+            ("reposition", "stop"),
+            ("reposition", "manual_review"),
+            ("manual_review", "stop"),
+            ("stop", "abort_and_release"),
+        }
+        for machine_action in actions:
+            for requested_action in actions:
+                classification = classify_override(machine_action, requested_action)
+                with self.subTest(machine_action=machine_action, requested_action=requested_action):
+                    if machine_action == requested_action:
+                        self.assertEqual(
+                            classification, OverrideClassification.IDEMPOTENT_SAME_ACTION
+                        )
+                        self.assertFalse(is_override_allowed(machine_action, requested_action))
+                    elif (machine_action, requested_action) in allowed:
+                        self.assertEqual(classification, OverrideClassification.ALLOWED)
+                        self.assertTrue(is_override_allowed(machine_action, requested_action))
+                    else:
+                        self.assertEqual(
+                            classification, OverrideClassification.REJECTED_BY_SAFETY
+                        )
+                        self.assertFalse(is_override_allowed(machine_action, requested_action))
 
 
 class ResolutionAndOutcomeTests(unittest.TestCase):

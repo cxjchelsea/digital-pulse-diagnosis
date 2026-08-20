@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
 import hashlib
 import re
@@ -58,8 +58,32 @@ FROZEN_RESOLUTIONS = frozenset(
 )
 RETRY_SCOPE_ID_PATTERN = re.compile(r"^m1-retry-scope-[0-9a-f]{64}$")
 EVENT_ID_PREFIX = "m1-int-event-"
+EVENT_ID_PATTERN = re.compile(r"^m1-int-event-[0-9a-f]{64}$")
+
+# 信封字段始终存在；下列为按 event_type 允许的非信封语义/溯源字段。
+_ENVELOPE_FIELDS = frozenset(
+    {
+        "event_id",
+        "event_seq",
+        "event_type",
+        "session_id",
+        "ledger_schema_version",
+        "occurred_at_utc",
+    }
+)
+_OPTIONAL_PROVENANCE_FIELDS = frozenset(
+    {
+        "software_commit_sha",
+        "rule_version",
+        "configuration_digest",
+        "app_run_id",
+        "app_analysis_fingerprint",
+        "sp_result_fingerprint",
+    }
+)
 
 # 身份字段：语义事实。不含 event_id、墙钟、软件 SHA、路径。
+# decision_recorded 的语义身份是 decision_id；rule_version/config 为审计溯源拷贝。
 _IDENTITY_FIELDS_BY_TYPE: dict[str, tuple[str, ...]] = {
     "decision_recorded": ("decision_id",),
     "operator_override": ("decision_id", "note", "operator_id", "requested_action"),
@@ -73,6 +97,32 @@ _IDENTITY_FIELDS_BY_TYPE: dict[str, tuple[str, ...]] = {
     "retry_scope_closed": ("retry_scope_id",),
     "retry_attempt_linked": ("decision_id", "linked_session_id", "retry_scope_id"),
 }
+
+# 各 event_type 允许的非信封字段（身份字段 ∪ 类型专属 ∪ 可选溯源）。
+_ALLOWED_NON_ENVELOPE_FIELDS: dict[str, frozenset[str]] = {
+    "decision_recorded": frozenset({"decision_id"}) | _OPTIONAL_PROVENANCE_FIELDS,
+    "operator_override": frozenset({"decision_id", "requested_action", "operator_id", "note"})
+    | _OPTIONAL_PROVENANCE_FIELDS,
+    "action_rejected_by_safety": frozenset(
+        {"decision_id", "requested_action", "operator_id", "note", "outcome"}
+    )
+    | _OPTIONAL_PROVENANCE_FIELDS,
+    "action_applied": frozenset({"decision_id", "outcome"}) | _OPTIONAL_PROVENANCE_FIELDS,
+    "decision_completed": frozenset({"decision_id", "outcome"}) | _OPTIONAL_PROVENANCE_FIELDS,
+    "awaiting_operator": frozenset({"decision_id", "outcome"}) | _OPTIONAL_PROVENANCE_FIELDS,
+    "reposition_acknowledged": frozenset(
+        {"decision_id", "operator_id", "prior_scope_id", "new_session_id"}
+    )
+    | _OPTIONAL_PROVENANCE_FIELDS,
+    "manual_review_resolved": frozenset({"decision_id", "operator_id", "resolution"})
+    | _OPTIONAL_PROVENANCE_FIELDS,
+    "retry_scope_started": frozenset({"retry_scope_id", "prior_scope_id"})
+    | _OPTIONAL_PROVENANCE_FIELDS,
+    "retry_scope_closed": frozenset({"retry_scope_id"}) | _OPTIONAL_PROVENANCE_FIELDS,
+    "retry_attempt_linked": frozenset({"decision_id", "linked_session_id", "retry_scope_id"})
+    | _OPTIONAL_PROVENANCE_FIELDS,
+}
+
 _DEFAULT_OUTCOME_BY_TYPE = {
     "action_applied": "applied",
     "decision_completed": "completed",
@@ -156,6 +206,8 @@ def require_machine_decision_record(decision: M1Decision) -> M1Decision:
 def canonical_event_payload(event: IntLedgerEvent) -> dict[str, Any]:
     """确定性身份载荷：含 event_seq 与语义字段，不含 event_id / 墙钟 / 软件 SHA。"""
 
+    if event.event_type not in _IDENTITY_FIELDS_BY_TYPE:
+        raise M1IntError("invalid_input", "event_type is not in the frozen INT event set")
     payload: dict[str, Any] = {
         "event_seq": event.event_seq,
         "event_type": event.event_type,
@@ -235,7 +287,26 @@ def build_int_ledger_event(
     )
     _validate_event_fields(draft)
     computed_id = EVENT_ID_PREFIX + event_fingerprint(draft)
-    return replace(draft, event_id=computed_id)
+    return validate_int_ledger_event(replace(draft, event_id=computed_id))
+
+
+def validate_int_ledger_event(event: IntLedgerEvent) -> IntLedgerEvent:
+    """独立校验已构造事件：字段合同 + event_id 与身份载荷一致。"""
+
+    _require_positive_seq(event.event_seq)
+    if event.event_type not in FROZEN_EVENT_TYPES:
+        raise M1IntError("invalid_input", "event_type is not in the frozen INT event set")
+    if event.ledger_schema_version != LEDGER_SCHEMA_VERSION:
+        raise M1IntError("version_mismatch", "ledger_schema_version does not match P4B ledger schema")
+    _require_non_empty("session_id", event.session_id)
+    _require_iso8601_utc(event.occurred_at_utc)
+    _validate_event_fields(event)
+    if not isinstance(event.event_id, str) or not EVENT_ID_PATTERN.fullmatch(event.event_id):
+        raise M1IntError("invalid_input", "event_id is not a frozen INT event identity")
+    expected = EVENT_ID_PREFIX + event_fingerprint(event)
+    if event.event_id != expected:
+        raise M1IntError("invalid_input", "event_id does not match canonical event fingerprint")
+    return event
 
 
 def validate_int_ledger_manifest(manifest: IntLedgerManifest) -> IntLedgerManifest:
@@ -264,9 +335,20 @@ def validate_int_ledger_manifest(manifest: IntLedgerManifest) -> IntLedgerManife
 
 
 def _validate_event_fields(event: IntLedgerEvent) -> None:
+    allowed = _ALLOWED_NON_ENVELOPE_FIELDS[event.event_type]
+    for field in fields(event):
+        if field.name in _ENVELOPE_FIELDS:
+            continue
+        value = getattr(event, field.name)
+        if value is None:
+            continue
+        if field.name not in allowed:
+            raise M1IntError(
+                "invalid_input",
+                f"{field.name} is not allowed on event_type={event.event_type}",
+            )
+
     if event.event_type in _REQUIRED_DECISION_ID_TYPES:
-        _require_decision_id(event.decision_id)
-    elif event.decision_id is not None:
         _require_decision_id(event.decision_id)
 
     if event.event_type == "decision_recorded":
@@ -275,8 +357,12 @@ def _validate_event_fields(event: IntLedgerEvent) -> None:
         _require_hex64("configuration_digest", event.configuration_digest)
     elif event.software_commit_sha is not None:
         _require_git_sha("software_commit_sha", event.software_commit_sha)
+    if event.rule_version is not None:
+        _require_non_empty("rule_version", event.rule_version)
     if event.configuration_digest is not None:
         _require_hex64("configuration_digest", event.configuration_digest)
+    if event.app_run_id is not None:
+        _require_non_empty("app_run_id", event.app_run_id)
     if event.app_analysis_fingerprint is not None:
         _require_hex64("app_analysis_fingerprint", event.app_analysis_fingerprint)
     if event.sp_result_fingerprint is not None:
@@ -285,36 +371,28 @@ def _validate_event_fields(event: IntLedgerEvent) -> None:
     if event.event_type == "operator_override":
         _require_i1_action(event.requested_action)
         _require_non_empty("operator_id", event.operator_id)
-        _require_string("note", event.note)
+        _require_non_empty("note", event.note)
     elif event.event_type == "action_rejected_by_safety":
         _require_i1_action(event.requested_action)
         _require_non_empty("operator_id", event.operator_id)
         if event.note is not None:
-            _require_string("note", event.note)
+            _require_non_empty("note", event.note)
     elif event.event_type == "manual_review_resolved":
         _require_non_empty("operator_id", event.operator_id)
         require_frozen_resolution(event.resolution or "")
     elif event.event_type == "reposition_acknowledged":
         _require_non_empty("operator_id", event.operator_id)
-        _require_retry_scope_id(event.prior_scope_id)
+        _require_retry_scope_id("prior_scope_id", event.prior_scope_id)
         _require_non_empty("new_session_id", event.new_session_id)
     elif event.event_type == "retry_scope_started":
-        _require_retry_scope_id(event.retry_scope_id)
+        _require_retry_scope_id("retry_scope_id", event.retry_scope_id)
         if event.prior_scope_id is not None:
-            _require_retry_scope_id(event.prior_scope_id)
+            _require_retry_scope_id("prior_scope_id", event.prior_scope_id)
     elif event.event_type == "retry_scope_closed":
-        _require_retry_scope_id(event.retry_scope_id)
+        _require_retry_scope_id("retry_scope_id", event.retry_scope_id)
     elif event.event_type == "retry_attempt_linked":
-        _require_retry_scope_id(event.retry_scope_id)
+        _require_retry_scope_id("retry_scope_id", event.retry_scope_id)
         _require_non_empty("linked_session_id", event.linked_session_id)
-
-    if event.resolution is not None and event.event_type != "manual_review_resolved":
-        raise M1IntError("invalid_input", "resolution is only valid on manual_review_resolved")
-    if event.requested_action is not None and event.event_type not in {
-        "operator_override",
-        "action_rejected_by_safety",
-    }:
-        raise M1IntError("invalid_input", "requested_action is not valid on this event_type")
 
 
 def _resolve_outcome(event_type: str, outcome: str | None) -> str | None:
@@ -347,12 +425,6 @@ def _require_non_empty(field_name: str, value: str | None) -> str:
     return value
 
 
-def _require_string(field_name: str, value: str | None) -> str:
-    if not isinstance(value, str):
-        raise M1IntError("invalid_input", f"{field_name} must be a string")
-    return value
-
-
 def _require_decision_id(decision_id: str | None) -> str:
     value = _require_non_empty("decision_id", decision_id)
     if not DECISION_ID_PATTERN.fullmatch(value):
@@ -380,10 +452,10 @@ def _require_i1_action(action: str | None) -> str:
     return action
 
 
-def _require_retry_scope_id(scope_id: str | None) -> str:
-    text = _require_non_empty("retry_scope_id", scope_id)
+def _require_retry_scope_id(field_name: str, scope_id: str | None) -> str:
+    text = _require_non_empty(field_name, scope_id)
     if not RETRY_SCOPE_ID_PATTERN.fullmatch(text):
-        raise M1IntError("invalid_input", "retry_scope_id does not match the frozen identifier form")
+        raise M1IntError("invalid_input", f"{field_name} does not match the frozen identifier form")
     return text
 
 
