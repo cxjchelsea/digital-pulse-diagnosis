@@ -67,3 +67,4 @@ artifacts/
 
 # Local P4B-B persistence test scratch
 tests/_p4bb_tmp/
+tests/_p4bc_tmp/
