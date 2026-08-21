@@ -335,6 +335,28 @@ jobs:
           name: m1-p4b-b-acceptance
           path: artifacts/acceptance/m1-p4b-b-acceptance.json
 
+      - name: Run M1-P4B-C slice acceptance
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python scripts/generate_m1_p4b_c_acceptance.py
+
+      - name: Assert M1-P4B-C slice acceptance
+        run: >
+          python -c "import json, subprocess; from pathlib import Path;
+          d=json.loads(Path('artifacts/acceptance/m1-p4b-c-acceptance.json').read_text(encoding='utf-8'));
+          expected_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip();
+          assert d.get('acceptance') is True, d.get('failed_gates');
+          assert d.get('failed_gates') == [];
+          assert d.get('software_commit_sha') == expected_sha;
+          assert d.get('acceptance_version') == 'm1-p4b-c-acceptance-v1';
+          assert d.get('stage') == 'M1-P4B-C'"
+
+      - name: Upload M1-P4B-C acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-p4b-c-acceptance
+          path: artifacts/acceptance/m1-p4b-c-acceptance.json
+
   web:
     name: Web production build and M1-P3D tests
     runs-on: ubuntu-latest

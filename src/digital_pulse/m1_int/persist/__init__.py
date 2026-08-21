@@ -1,4 +1,4 @@
-"""P4B-B machine decision persistence. Not P4B-A contracts and not P4B-C events."""
+"""P4B-B machine decision persistence and P4B-C typed event persistence."""
 
 from .ledger import (
     ALREADY_COMMITTED,
@@ -6,6 +6,7 @@ from .ledger import (
     AppendResult,
     AppendStatus,
     DecisionLedger,
+    EventAppendResult,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "AppendResult",
     "AppendStatus",
     "DecisionLedger",
+    "EventAppendResult",
 ]

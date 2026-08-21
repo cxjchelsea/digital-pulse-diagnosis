@@ -21,6 +21,7 @@ from digital_pulse.m1_contracts import (
 from digital_pulse.m1_int.errors import M1IntError
 from digital_pulse.m1_int.ledger_models import (
     EMPTY_LEDGER_DIGEST,
+    FROZEN_EVENT_TYPES,
     LEDGER_MANIFEST_SCHEMA_VERSION,
     LEDGER_SCHEMA_VERSION,
     IntLedgerEvent,
@@ -30,6 +31,7 @@ from digital_pulse.m1_int.ledger_models import (
     validate_int_ledger_event,
     validate_int_ledger_manifest,
 )
+from digital_pulse.m1_int.override_safety import OverrideClassification, classify_override
 from digital_pulse.m1_int.models import (
     DECISION_ID_PATTERN,
     GIT_COMMIT_SHA_PATTERN,
@@ -38,6 +40,13 @@ from digital_pulse.m1_int.models import (
     dumps_canonical,
 )
 
+from .events import (
+    build_typed_event,
+    event_business_key,
+    identity_without_seq,
+    provenance_tuple,
+    require_operator_identity,
+)
 from .locking import int_session_lock
 
 FailureInjector = Callable[[str], None]
@@ -69,6 +78,16 @@ class AppendResult:
     decision_id: str
     event_seq: int
     awaiting_operator_seq: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class EventAppendResult:
+    status: AppendStatus
+    event_type: str
+    event_id: str
+    event_seq: int
+    decision_id: str | None
+    classification: OverrideClassification | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +145,330 @@ class DecisionLedger:
         with int_session_lock(int_dir):
             self._recover_locked(session_id, int_dir)
             return self._verify_locked(session_id, int_dir)
+
+    def persist_operator_override(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        requested_action: str,
+        operator_id: str,
+        note: str,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        operator_id = require_operator_identity(operator_id)
+        return self._persist_decision_event(
+            session_id,
+            decision_id,
+            source_provenance,
+            event_id=event_id,
+            builder=lambda decision, seq, occurred: _override_or_rejection_event(
+                decision, source_provenance, seq, occurred, requested_action, operator_id, note
+            ),
+        )
+
+    def persist_action_applied(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="action_applied",
+            decision_id=decision_id,
+            outcome="applied",
+        )
+
+    def persist_safety_rejection(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        requested_action: str,
+        operator_id: str,
+        source_provenance: DecisionSourceProvenance,
+        note: str | None = None,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        operator_id = require_operator_identity(operator_id)
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="action_rejected_by_safety",
+            decision_id=decision_id,
+            requested_action=requested_action,
+            operator_id=operator_id,
+            note=note,
+            outcome="rejected_by_safety",
+        )
+
+    def persist_decision_completed(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="decision_completed",
+            decision_id=decision_id,
+            outcome="completed",
+        )
+
+    def persist_awaiting_operator(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="awaiting_operator",
+            decision_id=decision_id,
+            outcome="awaiting_operator",
+        )
+
+    def persist_manual_review_resolution(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        resolution: str,
+        operator_id: str,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        operator_id = require_operator_identity(operator_id)
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="manual_review_resolved",
+            decision_id=decision_id,
+            operator_id=operator_id,
+            resolution=resolution,
+        )
+
+    def persist_reposition_acknowledged(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        operator_id: str,
+        prior_scope_id: str,
+        new_session_id: str,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        operator_id = require_operator_identity(operator_id)
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="reposition_acknowledged",
+            decision_id=decision_id,
+            operator_id=operator_id,
+            prior_scope_id=prior_scope_id,
+            new_session_id=new_session_id,
+        )
+
+    def persist_retry_scope_started(
+        self,
+        session_id: str,
+        *,
+        retry_scope_id: str,
+        source_provenance: DecisionSourceProvenance,
+        prior_scope_id: str | None = None,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="retry_scope_started",
+            retry_scope_id=retry_scope_id,
+            prior_scope_id=prior_scope_id,
+        )
+
+    def persist_retry_scope_closed(
+        self,
+        session_id: str,
+        *,
+        retry_scope_id: str,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="retry_scope_closed",
+            retry_scope_id=retry_scope_id,
+        )
+
+    def persist_retry_attempt_linked(
+        self,
+        session_id: str,
+        decision_id: str,
+        *,
+        retry_scope_id: str,
+        linked_session_id: str,
+        source_provenance: DecisionSourceProvenance,
+        event_id: str | None = None,
+    ) -> EventAppendResult:
+        return self._persist_typed(
+            session_id,
+            source_provenance,
+            event_id=event_id,
+            event_type="retry_attempt_linked",
+            decision_id=decision_id,
+            retry_scope_id=retry_scope_id,
+            linked_session_id=linked_session_id,
+        )
+
+    def _persist_typed(
+        self,
+        session_id: str,
+        source_provenance: DecisionSourceProvenance,
+        *,
+        event_id: str | None,
+        event_type: str,
+        decision_id: str | None = None,
+        **fields: Any,
+    ) -> EventAppendResult:
+        return self._persist_decision_event(
+            session_id,
+            decision_id,
+            source_provenance,
+            event_id=event_id,
+            require_decision=decision_id is not None,
+            builder=lambda decision, seq, occurred: build_typed_event(
+                event_seq=seq,
+                event_type=event_type,
+                session_id=session_id,
+                occurred_at=occurred,
+                provenance=source_provenance,
+                decision_id=decision_id,
+                rule_version=None if decision is None else decision.rule_version,
+                configuration_digest=(
+                    None if decision is None else decision.input_versions.configuration_digest
+                ),
+                **fields,
+            ),
+        )
+
+    def _persist_decision_event(
+        self,
+        session_id: str,
+        decision_id: str | None,
+        source_provenance: DecisionSourceProvenance,
+        *,
+        event_id: str | None,
+        builder,
+        require_decision: bool = True,
+    ) -> EventAppendResult:
+        session_id = _require_session_id(session_id)
+        int_dir = self._int_dir(session_id, create=True)
+        with int_session_lock(int_dir):
+            self._recover_locked(session_id, int_dir)
+            return self._persist_events_locked(
+                int_dir,
+                session_id,
+                decision_id,
+                source_provenance,
+                event_id=event_id,
+                builder=builder,
+                require_decision=require_decision,
+            )
+
+    def _persist_events_locked(
+        self,
+        int_dir: Path,
+        session_id: str,
+        decision_id: str | None,
+        source_provenance: DecisionSourceProvenance,
+        *,
+        event_id: str | None,
+        builder,
+        require_decision: bool,
+    ) -> EventAppendResult:
+        decisions_path = int_dir / "decisions.jsonl"
+        events_path = int_dir / "decision-events.jsonl"
+        decisions = self._read_jsonl(decisions_path)
+        events = self._read_jsonl(events_path)
+        if decisions.trailing_partial or events.trailing_partial:
+            raise M1IntError("ledger_untrusted", "ledger has an unrecovered trailing partial record")
+        self._assert_minimal_integrity(session_id, decisions, events)
+        decision = None
+        if require_decision:
+            if not decision_id:
+                raise M1IntError("invalid_input", "decision_id is required")
+            decision = _require_existing_machine(decisions.records, decision_id)
+        next_seq = (events.records[-1]["event_seq"] + 1) if events.records else 1
+        occurred_at = self._clock()
+        built = builder(decision, next_seq, occurred_at)
+        if event_id:
+            existing_by_id = _event_record_by_id(events.records, event_id)
+            if existing_by_id is not None:
+                existing = _event_from_record(existing_by_id)
+                return _already_or_conflict(
+                    existing,
+                    source_provenance,
+                    event_id=event_id,
+                    incoming=built,
+                    decision=decision,
+                )
+            if built.event_id != event_id:
+                raise M1IntError("invalid_input", "supplied event_id does not match canonical event identity")
+        existing_key = _event_by_business_key(events.records, event_business_key(built))
+        if existing_key is not None:
+            return _already_or_conflict(
+                existing_key,
+                source_provenance,
+                incoming=built,
+                decision=decision,
+            )
+        classification = None
+        if built.event_type in {"operator_override", "action_rejected_by_safety"} and decision is not None:
+            classification = classify_override(_action_value(decision.action), built.requested_action or "")
+        event_lines = [_event_line_bytes(built)]
+        pending = _pending_descriptor(
+            session_id=session_id,
+            decision_id=decision_id or session_id,
+            pre_decisions=decisions.complete_bytes,
+            pre_events=events.complete_bytes,
+            decision_line=b"",
+            event_lines=event_lines,
+            rule_version=_rule_version_for_pending(decision, events.records),
+            configuration_digest=_config_for_pending(decision, events.records),
+            software_commit_sha=source_provenance.software_commit_sha,
+            commit_kind="events",
+        )
+        self._write_pending(int_dir, pending)
+        self._commit_pending(int_dir, pending)
+        return EventAppendResult(
+            status=AppendStatus.COMMITTED,
+            event_type=built.event_type,
+            event_id=built.event_id,
+            event_seq=built.event_seq,
+            decision_id=built.decision_id,
+            classification=classification,
+        )
 
     def _append_locked(
         self,
@@ -210,9 +553,13 @@ class DecisionLedger:
             raise M1IntError("ledger_untrusted", "pending commit session_id does not match ledger")
         if pending.get("schema_version") != PENDING_SCHEMA_VERSION:
             raise M1IntError("version_mismatch", "pending commit schema is not supported")
-        decision_line = _b64_or_text(pending["decision_record"])
+        decision_line = _pending_decision_bytes(pending.get("decision_record"))
         event_lines = [_b64_or_text(item) for item in pending["event_records"]]
-        _require_pending_intended_records(decision_line, event_lines)
+        _require_pending_intended_records(
+            decision_line,
+            event_lines,
+            commit_kind=str(pending.get("commit_kind") or "machine_decision"),
+        )
         pre_decision_count = int(pending["pre_decision_count"])
         pre_event_count = int(pending["pre_event_count"])
         decisions = self._recover_decision_trailing(
@@ -299,7 +646,7 @@ class DecisionLedger:
         raise M1IntError("ledger_untrusted", "pending commit does not match ledger pre/post state")
 
     def _commit_pending(self, int_dir: Path, pending: dict[str, Any]) -> None:
-        decision_line = _b64_or_text(pending["decision_record"])
+        decision_line = _pending_decision_bytes(pending.get("decision_record"))
         event_lines = [_b64_or_text(item) for item in pending["event_records"]]
         self._append_exact(int_dir / "decisions.jsonl", decision_line, "decisions")
         self._append_exact(int_dir / "decision-events.jsonl", b"".join(event_lines), "events")
@@ -436,8 +783,8 @@ class DecisionLedger:
                 raise M1IntError("ledger_untrusted", "event session_id does not match ledger")
             if event.event_seq != expected_seq:
                 raise M1IntError("ledger_untrusted", "event_seq is not contiguous")
-            if event.event_type not in {"decision_recorded", "awaiting_operator"}:
-                raise M1IntError("ledger_untrusted", "P4B-B ledger contains a non-decision-append event")
+            if event.event_type not in FROZEN_EVENT_TYPES:
+                raise M1IntError("ledger_untrusted", "ledger contains an unknown event_type")
             if event.event_type == "decision_recorded":
                 if event.decision_id not in seen:
                     raise M1IntError("ledger_untrusted", "decision_recorded references an unknown decision")
@@ -449,20 +796,28 @@ class DecisionLedger:
                     raise M1IntError("ledger_untrusted", "awaiting_operator precedes decision_recorded")
                 if event.decision_id in awaiting_seq_by_id:
                     raise M1IntError("ledger_untrusted", "awaiting_operator is duplicated for one decision")
-                recorded_seq = recorded_seq_by_id[event.decision_id or ""]
-                if event.event_seq != recorded_seq + 1:
-                    raise M1IntError("ledger_untrusted", "awaiting_operator is not the next event after decision_recorded")
                 awaiting_seq_by_id[event.decision_id or ""] = event.event_seq
+            elif event.decision_id and event.decision_id not in seen and event.event_type in {
+                "operator_override",
+                "action_applied",
+                "action_rejected_by_safety",
+                "decision_completed",
+                "manual_review_resolved",
+                "reposition_acknowledged",
+                "retry_attempt_linked",
+            }:
+                raise M1IntError("ledger_untrusted", "event references an unknown decision")
             expected_seq += 1
         if seen - set(recorded_seq_by_id):
             raise M1IntError("ledger_untrusted", "decision exists without decision_recorded")
+        override_awaiting = _override_requested_awaiting(events.records)
         for record in decisions.records:
             decision = _decision_from_record(record)
             action = _action_value(decision.action)
             has_awaiting = decision.decision_id in awaiting_seq_by_id
             if action in AWAITING_ACTIONS and not has_awaiting:
                 raise M1IntError("ledger_untrusted", "manual_review/reposition is missing awaiting_operator")
-            if action not in AWAITING_ACTIONS and has_awaiting:
+            if action not in AWAITING_ACTIONS and has_awaiting and decision.decision_id not in override_awaiting:
                 raise M1IntError("ledger_untrusted", "awaiting_operator is not allowed for this action")
 
     def _read_jsonl(self, path: Path) -> _JsonlView:
@@ -654,6 +1009,7 @@ def _pending_descriptor(
     rule_version: str,
     configuration_digest: str,
     software_commit_sha: str,
+    commit_kind: str = "machine_decision",
 ) -> dict[str, Any]:
     post_decisions = pre_decisions + decision_line
     post_events = pre_events + b"".join(event_lines)
@@ -661,6 +1017,7 @@ def _pending_descriptor(
         "schema_version": PENDING_SCHEMA_VERSION,
         "session_id": session_id,
         "decision_id": decision_id,
+        "commit_kind": commit_kind,
         "ledger_schema_version": LEDGER_SCHEMA_VERSION,
         "pre_decision_count": pre_decisions.count(b"\n"),
         "pre_event_count": pre_events.count(b"\n"),
@@ -827,7 +1184,28 @@ def _assert_retry_provenance_matches(
         )
 
 
-def _require_pending_intended_records(decision_line: bytes, event_lines: list[bytes]) -> None:
+def _require_pending_intended_records(
+    decision_line: bytes,
+    event_lines: list[bytes],
+    *,
+    commit_kind: str = "machine_decision",
+) -> None:
+    if commit_kind == "events":
+        if decision_line:
+            raise M1IntError("ledger_untrusted", "events pending must not rewrite decisions.jsonl")
+        if not event_lines:
+            raise M1IntError("ledger_untrusted", "pending commit has no intended events")
+        for raw in event_lines:
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise M1IntError("ledger_untrusted", "pending event record is not JSON") from exc
+            if not isinstance(payload, dict):
+                raise M1IntError("ledger_untrusted", "pending event record is not an object")
+            event = _event_from_record(payload)
+            if _event_line_bytes(event) != raw:
+                raise M1IntError("ledger_untrusted", "pending event record is not canonical")
+        return
     try:
         decision_payload = json.loads(decision_line.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -934,6 +1312,129 @@ def _b64_or_text(value: Any) -> bytes:
     if not encoded.endswith(b"\n"):
         encoded += b"\n"
     return encoded
+
+
+def _pending_decision_bytes(value: Any) -> bytes:
+    if value in (None, ""):
+        return b""
+    return _b64_or_text(value)
+
+
+def _require_existing_machine(records: tuple[dict[str, Any], ...], decision_id: str) -> M1Decision:
+    for record in records:
+        if record.get("decision_id") == decision_id:
+            decision = _decision_from_record(record)
+            require_machine_decision_record(decision)
+            return decision
+    raise M1IntError("invalid_input", "machine decision is not present in the ledger")
+
+
+def _event_record_by_id(records: tuple[dict[str, Any], ...], event_id: str) -> dict[str, Any] | None:
+    for record in records:
+        if record.get("event_id") == event_id:
+            return record
+    return None
+
+
+def _event_by_business_key(
+    records: tuple[dict[str, Any], ...],
+    key: tuple[Any, ...],
+) -> IntLedgerEvent | None:
+    for record in records:
+        event = _event_from_record(record)
+        if event_business_key(event) == key:
+            return event
+    return None
+
+
+def _already_or_conflict(
+    existing: IntLedgerEvent,
+    provenance: DecisionSourceProvenance,
+    *,
+    event_id: str | None = None,
+    incoming: IntLedgerEvent | None = None,
+    decision: M1Decision | None = None,
+) -> EventAppendResult:
+    if event_id is not None and existing.event_id != event_id:
+        raise M1IntError("duplicate_conflict", "event_id already exists with different payload")
+    if incoming is not None and identity_without_seq(existing) != identity_without_seq(incoming):
+        raise M1IntError("duplicate_conflict", "event identity already exists with different payload")
+    expected_prov = (
+        provenance.software_commit_sha,
+        provenance.app_run_id,
+        provenance.app_analysis_fingerprint,
+        provenance.sp_result_fingerprint,
+    )
+    if provenance_tuple(existing) != expected_prov:
+        raise M1IntError("provenance_mismatch", "retry provenance does not match the committed event")
+    classification = None
+    if decision is not None and existing.requested_action:
+        classification = classify_override(_action_value(decision.action), existing.requested_action)
+    return EventAppendResult(
+        status=AppendStatus.ALREADY_COMMITTED,
+        event_type=existing.event_type,
+        event_id=existing.event_id,
+        event_seq=existing.event_seq,
+        decision_id=existing.decision_id,
+        classification=classification,
+    )
+
+
+def _override_or_rejection_event(
+    decision: M1Decision | None,
+    provenance: DecisionSourceProvenance,
+    event_seq: int,
+    occurred_at: str,
+    requested_action: str,
+    operator_id: str,
+    note: str,
+) -> IntLedgerEvent:
+    if decision is None:
+        raise M1IntError("invalid_input", "operator override requires a machine decision")
+    classification = classify_override(_action_value(decision.action), requested_action)
+    event_type = (
+        "action_rejected_by_safety"
+        if classification is OverrideClassification.REJECTED_BY_SAFETY
+        else "operator_override"
+    )
+    return build_typed_event(
+        event_seq=event_seq,
+        event_type=event_type,
+        session_id=decision.session_id,
+        occurred_at=occurred_at,
+        provenance=provenance,
+        decision_id=decision.decision_id,
+        requested_action=requested_action,
+        operator_id=operator_id,
+        note=note,
+        outcome="rejected_by_safety" if event_type == "action_rejected_by_safety" else None,
+        rule_version=decision.rule_version,
+        configuration_digest=decision.input_versions.configuration_digest,
+    )
+
+
+def _override_requested_awaiting(records: tuple[dict[str, Any], ...]) -> set[str]:
+    allowed = set()
+    for record in records:
+        if record.get("event_type") == "operator_override" and record.get("requested_action") in AWAITING_ACTIONS:
+            decision_id = record.get("decision_id")
+            if isinstance(decision_id, str):
+                allowed.add(decision_id)
+    return allowed
+
+
+def _rule_version_for_pending(decision: M1Decision | None, records: tuple[dict[str, Any], ...]) -> str:
+    if decision is not None:
+        return decision.rule_version
+    rule, _digest, _software = _provenance_from_events(records)
+    return rule
+
+
+def _config_for_pending(decision: M1Decision | None, records: tuple[dict[str, Any], ...]) -> str:
+    if decision is not None:
+        return decision.input_versions.configuration_digest
+    _rule, digest, _software = _provenance_from_events(records)
+    return digest
 
 
 def _is_link_or_junction(path: Path) -> bool:
