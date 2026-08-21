@@ -1,4 +1,4 @@
-"""M1-P4A 规则核心、P4B-A 合同、P4B-B decision persistence 与 P4B-C event persist API。"""
+"""M1-P4A 规则核心、P4B-A 合同、P4B-B/C persistence 与 P4B-D replay API。"""
 
 from .errors import M1IntError
 from .ledger_models import (
@@ -44,6 +44,8 @@ from .persist import (
 )
 from .policy import I1PolicyConfig, policy_configuration_digest
 from .projection import project_m1_decision
+from .replay import fold_ledger_snapshot
+from .replay_models import LedgerReplayResult, ReconstructedDecisionView
 from .rules import I1RuleEngine
 
 __all__ = [
@@ -68,7 +70,9 @@ __all__ = [
     "IntegrityFacts",
     "LEDGER_MANIFEST_SCHEMA_VERSION",
     "LEDGER_SCHEMA_VERSION",
+    "LedgerReplayResult",
     "M1IntError",
+    "ReconstructedDecisionView",
     "OperatorFacts",
     "OverrideClassification",
     "QualityFacts",
@@ -80,6 +84,7 @@ __all__ = [
     "canonical_event_payload",
     "classify_override",
     "event_fingerprint",
+    "fold_ledger_snapshot",
     "history_fingerprint",
     "is_override_allowed",
     "policy_configuration_digest",
@@ -90,3 +95,9 @@ __all__ = [
     "validate_int_ledger_event",
     "validate_int_ledger_manifest",
 ]
+
+# P4B-B forbids a public name `replay` on this package. The fold module file
+# remains replay.py; only the package attribute is hidden.
+if "replay" in globals():
+    del replay
+

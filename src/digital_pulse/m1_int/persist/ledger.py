@@ -39,6 +39,8 @@ from digital_pulse.m1_int.models import (
     DecisionSourceProvenance,
     dumps_canonical,
 )
+from digital_pulse.m1_int.replay import fold_ledger_snapshot
+from digital_pulse.m1_int.replay_models import LedgerReplayResult, make_verified_snapshot
 
 from .events import (
     build_typed_event,
@@ -339,6 +341,62 @@ class DecisionLedger:
             decision_id=decision_id,
             retry_scope_id=retry_scope_id,
             linked_session_id=linked_session_id,
+        )
+
+    def replay_session(self, session_id: str) -> LedgerReplayResult:
+        """Business-semantic read-only replay of persisted ledger facts."""
+
+        session_id = _require_session_id(session_id)
+        int_dir = self._int_dir(session_id, create=False)
+        try:
+            with int_session_lock(int_dir):
+                self._recover_locked(session_id, int_dir)
+                snapshot = self._snapshot_for_replay(session_id, int_dir)
+        except M1IntError as exc:
+            raise _remap_replay_integrity(exc) from exc
+        return fold_ledger_snapshot(snapshot)
+
+    def _snapshot_for_replay(self, session_id: str, int_dir: Path):
+        decisions = self._read_jsonl(int_dir / "decisions.jsonl")
+        events = self._read_jsonl(int_dir / "decision-events.jsonl")
+        if decisions.trailing_partial or events.trailing_partial:
+            raise M1IntError("ledger_untrusted", "ledger still has a trailing partial record")
+        try:
+            self._assert_minimal_integrity(session_id, decisions, events)
+        except M1IntError as exc:
+            raise _remap_replay_integrity(exc) from exc
+        for record in decisions.records:
+            require_machine_decision_record(_decision_from_record(record))
+        for record in events.records:
+            if record.get("event_type") not in FROZEN_EVENT_TYPES:
+                raise M1IntError("unsupported_event_type", "ledger contains an unknown event_type")
+            if record.get("ledger_schema_version") != LEDGER_SCHEMA_VERSION:
+                raise M1IntError("unsupported_schema_version", "ledger_schema_version is not supported")
+        try:
+            manifest = _load_manifest(int_dir / "manifest.json")
+        except M1IntError as exc:
+            raise M1IntError("manifest_mismatch", exc.message) from exc
+        expected = _manifest_from_ledger(
+            session_id=session_id,
+            decisions=decisions,
+            events=events,
+            rule_version=manifest.decision_rule_version,
+            configuration_digest=manifest.configuration_digest,
+            software_commit_sha=manifest.software_commit_sha,
+        )
+        if _manifest_payload(manifest) != _manifest_payload(expected):
+            raise M1IntError("manifest_mismatch", "manifest does not match ledger source of truth")
+        machines = tuple(_decision_from_record(record) for record in decisions.records)
+        typed_events = tuple(_event_from_record(record) for record in events.records)
+        return make_verified_snapshot(
+            session_id=session_id,
+            machine_decisions=machines,
+            events=typed_events,
+            ledger_schema_version=LEDGER_SCHEMA_VERSION,
+            manifest_schema_version=manifest.schema_version,
+            decisions_sha256=_sha256_bytes(decisions.complete_bytes),
+            events_sha256=_sha256_bytes(events.complete_bytes),
+            last_event_seq=typed_events[-1].event_seq if typed_events else 0,
         )
 
     def _persist_typed(
@@ -1287,6 +1345,24 @@ def _require_session_id(session_id: str) -> str:
     if PurePosixPath(session_id).as_posix() != session_id:
         raise M1IntError("invalid_input", "session_id is not a canonical path segment")
     return session_id
+
+
+def _remap_replay_integrity(exc: M1IntError) -> M1IntError:
+    message = exc.message
+    cause = exc.__cause__
+    if isinstance(cause, M1IntError) and cause.code == "version_mismatch":
+        return M1IntError("unsupported_schema_version", cause.message)
+    if isinstance(cause, M1IntError) and "event_type is not in the frozen" in cause.message:
+        return M1IntError("unsupported_event_type", cause.message)
+    if "unknown event_type" in message:
+        return M1IntError("unsupported_event_type", message)
+    if "references an unknown decision" in message:
+        return M1IntError("dangling_decision_reference", message)
+    if "decision exists without decision_recorded" in message:
+        return M1IntError("decision_record_mismatch", message)
+    if "decision_recorded is duplicated" in message:
+        return M1IntError("decision_record_mismatch", message)
+    return exc
 
 
 def _action_value(action: DecisionAction | str) -> str:
